@@ -52,3 +52,6 @@ tileSource.setOption("url", "http://city.informatik.uni-bremen.de/osci/example")
 
 See TileStache documentation for available options to integrate with apache, nginx, etc 
 
+Now compile vtm-gdx-html project, set the tilesource and url in index.html. Enjoy your WebGL vector map :)
+http://city.informatik.uni-bremen.de/~jeff/example/
+
