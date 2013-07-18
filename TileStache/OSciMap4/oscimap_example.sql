@@ -9,7 +9,8 @@ bbox := map.ttb(x,y,zoom, 2);
 pixel := map.paz(zoom);
 
 -- simplify geometry with 'pixel' tolerance and tranlate and scale to tile coordinates (0-4096)
-return query select 'natural=>water'::hstore, st_asewkb(map.scaletotile(x, y, zoom, st_simplifypreservetopology(g, pixel))) 
+return query select 'natural=>water'::hstore, 
+	st_asewkb(map.scaletotile(x, y, zoom, st_simplifypreservetopology(g, pixel))) 
 	-- clip to intersection of tile bounding box, 
 	-- dump geometry collections and make sure the results are polygons
 	from (select st_buffer((st_dump(st_intersection(wkb_geometry, bbox))).geom, 0) g 
@@ -17,6 +18,15 @@ return query select 'natural=>water'::hstore, st_asewkb(map.scaletotile(x, y, zo
 		where wkb_geometry && bbox) p
 	where st_dimension(g) = 2;
 	
+return query select 'boundary=>administrative'::hstore || 'admin_level=>2'::hstore, 
+	st_asewkb(map.scaletotile(x, y, zoom, st_simplifypreservetopology(g, pixel))) 
+	-- clip to intersection of tile bounding box, 
+	-- dump geometry collections and make sure the results are linestring
+	from (select (st_dump(st_intersection(wkb_geometry, bbox))).geom g 
+		from ne_10m_boundaries 
+		where wkb_geometry && bbox) p
+	where st_dimension(g) = 1;
+
 end;
 $BODY$
 LANGUAGE plpgsql;

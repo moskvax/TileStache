@@ -27,6 +27,10 @@ wget "http://www.naturalearthdata.com/http//www.naturalearthdata.com/download/10
 unzip ne_10m_populated_places_simple.zip
 ogr2ogr -f "PostgreSQL" PG:"dbname=oscimap" -nln ne_10m_populated_places -clipsrc -180 -85.5 180 85.5  -t_srs EPSG:3857 ne_10m_populated_places_simple.shp 
 
+wget "http://www.naturalearthdata.com/http//www.naturalearthdata.com/download/10m/cultural/ne_10m_admin_0_boundary_lines_land.zip"
+unzip ne_10m_admin_0_boundary_lines_land.zip 
+ogr2ogr -f "PostgreSQL" PG:"dbname=oscimap" -nln ne_10m_boundaries -nlt multilinestring -overwrite -clipsrc -180 -85.5 180 85.5  -t_srs EPSG:3857 ne_10m_admin_0_boundary_lines_land.shp 
+
 psql -d oscimap
 GRANT SELECT ON ALL TABLES IN SCHEMA public TO public;
 \q
