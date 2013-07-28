@@ -1,3 +1,6 @@
+
+A vector-tile provider for VectorTileMap. 
+
 Prerequisites:
 --------------
 - Install Postgresql, PostGIS, TileStache, python-psycopg2 and python-protobuf
@@ -51,7 +54,11 @@ See TileStache documentation for available options to integrate with apache, ngi
 
 Enjoy:
 ------
-If everything works, change your VectorTileMap app to point to your test server. 
+- Release branch 0.5 for Android: https://github.com/opensciencemap/vtm-android,vtm-app-simple
+- Experimental dev branch with Android, desktop and web backends https://github.com/hjanetzek/vtm
+
+
+Now change VectorTileMap app to point to your test server. 
 
 ```
 TileSource tileSource = new OSciMap4TileSource();
