@@ -143,7 +143,8 @@ class Provider:
             This only accepts "vtm" for the time being.
         """
         if extension.lower() == 'vtm':
-            return 'application/x-protobuf', 'VTM'
+            return 'image/png', 'VTM'
+            #return 'application/x-protobuf', 'VTM'
 
         raise KnownUnknown('OpenScienceMap Provider only makes ".vtm", not "%s"' % extension)
 
