@@ -2,6 +2,7 @@
 doc
 dist
 build
+cache
 TileStache-*.*
 TileStache-*.*.tar.gz
 *.dbf
