@@ -8,24 +8,34 @@ begin
 bbox := map.ttb(x,y,zoom, 2);
 pixel := map.paz(zoom);
 
--- simplify geometry with 'pixel' tolerance and tranlate and scale to tile coordinates (0-4096)
-return query select 'natural=>water'::hstore, 
-	st_asewkb(map.scaletotile(x, y, zoom, st_simplifypreservetopology(g, pixel))) 
-	-- clip to intersection of tile bounding box, 
-	-- dump geometry collections and make sure the results are polygons
-	from (select st_buffer((st_dump(st_intersection(wkb_geometry, bbox))).geom, 0) g 
-		from ne_50m_ocean 
-		where wkb_geometry && bbox) p
-	where st_dimension(g) = 2;
-	
-return query select 'boundary=>administrative'::hstore || 'admin_level=>2'::hstore, 
-	st_asewkb(map.scaletotile(x, y, zoom, st_simplifypreservetopology(g, pixel))) 
-	-- clip to intersection of tile bounding box, 
-	-- dump geometry collections and make sure the results are linestring
-	from (select (st_dump(st_intersection(wkb_geometry, bbox))).geom g 
-		from ne_10m_boundaries 
-		where wkb_geometry && bbox) p
-	where st_dimension(g) = 1;
+return query
+	SELECT
+		(
+			hstore('name', g.name) ||
+			hstore('highway', g.highway)
+		) AS tags,
+		ST_AsEWKB(map.scaletotile(x, y, zoom, ST_SimplifyPreserveTopology(ST_Intersection(g.way, bbox), pixel)))
+	FROM
+		planet_osm_line AS g
+	WHERE
+		g.way && bbox AND
+		g.highway IS NOT NULL;
+return query
+	SELECT
+		(
+			hstore('name', g.name) ||
+			hstore('building', g.building) ||
+			hstore('leisure', g.leisure)
+		) AS tags,
+		ST_AsEWKB(map.scaletotile(x, y, zoom, ST_SimplifyPreserveTopology(ST_Intersection(g.way, bbox), pixel)))
+	FROM
+		planet_osm_polygon AS g
+	WHERE
+		g.way && bbox AND
+		(
+			g.building IS NOT NULL OR
+			g.leisure IS NOT NULL
+		);
 
 end;
 $BODY$

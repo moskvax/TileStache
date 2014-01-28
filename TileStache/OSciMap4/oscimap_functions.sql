@@ -64,7 +64,7 @@ BEGIN
 		maxLat :=  greatest(maxLat, -scaleFactor);
 	end if;
 	
-	RETURN ST_MakeEnvelope(minLon, minLat, maxLon, maxLat, 3857);	
+	RETURN ST_MakeEnvelope(minLon, minLat, maxLon, maxLat, 900913);	
 	
 END;
 $BODY$
