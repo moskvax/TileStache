@@ -91,21 +91,8 @@ def encode(file, features, zoom, is_clipped):
             feature.update(dict(clipped=True))
     
     geojson = dict(type='FeatureCollection', features=features)
-    encoder = json.JSONEncoder(separators=(',', ':'))
-    encoded = encoder.iterencode(geojson)
-    flt_fmt = '%%.%df' % precisions[zoom]
-    
-    for token in encoded:
-        if charfloat_pat.match(token):
-            # in python 2.7, we see a character followed by a float literal
-            file.write(token[0] + flt_fmt % float(token[1:]))
-        
-        elif float_pat.match(token):
-            # in python 2.6, we see a simple float literal
-            file.write(flt_fmt % float(token))
-        
-        else:
-            file.write(token)
+
+    write_to_file(file, geojson, zoom)
 
 def merge(file, names, config, coord):
     ''' Retrieve a list of GeoJSON tile responses and merge them into one.
@@ -115,9 +102,15 @@ def merge(file, names, config, coord):
     inputs = get_tiles(names, config, coord)
     output = dict(zip(names, inputs))
 
+    write_to_file(file, output, coord.zoom)
+
+def write_to_file(file, geojson, zoom):
+    ''' Write GeoJSON stream to a file
+
+    '''
     encoder = json.JSONEncoder(separators=(',', ':'))
-    encoded = encoder.iterencode(output)
-    flt_fmt = '%%.%df' % precisions[coord.zoom]
+    encoded = encoder.iterencode(geojson)
+    flt_fmt = '%%.%df' % precisions[zoom]
     
     for token in encoded:
         if charfloat_pat.match(token):
