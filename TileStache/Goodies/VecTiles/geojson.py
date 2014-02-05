@@ -6,8 +6,6 @@ import json
 from shapely.wkb import loads
 from shapely.geometry import asShape
 
-from ... import getTile
-from ...Core import KnownUnknown
 from .ops import transform
 
 float_pat = compile(r'^-?\d+\.\d+(e-?\d+)?$')
@@ -15,32 +13,6 @@ charfloat_pat = compile(r'^[\[,\,]-?\d+\.\d+(e-?\d+)?$')
 
 # floating point lat/lon precision for each zoom level, good to ~1/4 pixel.
 precisions = [int(ceil(log(1<<zoom + 8+2) / log(10)) - 2) for zoom in range(23)]
-
-def get_tiles(names, config, coord):
-    ''' Retrieve a list of named GeoJSON layer tiles from a TileStache config.
-    
-        Check integrity and compatibility of each, looking at known layers,
-        correct JSON mime-types and "FeatureCollection" in the type attributes.
-    '''
-    unknown_layers = set(names) - set(config.layers.keys())
-    
-    if unknown_layers:
-        raise KnownUnknown("%s.get_tiles didn't recognize %s when trying to load %s." % (__name__, ', '.join(unknown_layers), ', '.join(names)))
-    
-    layers = [config.layers[name] for name in names]
-    mimes, bodies = zip(*[getTile(layer, coord, 'json') for layer in layers])
-    bad_mimes = [(name, mime) for (mime, name) in zip(mimes, names) if not mime.endswith('/json')]
-    
-    if bad_mimes:
-        raise KnownUnknown('%s.get_tiles encountered a non-JSON mime-type in %s sub-layer: "%s"' % ((__name__, ) + bad_mimes[0]))
-    
-    geojsons = map(json.loads, bodies)
-    bad_types = [(name, topo['type']) for (topo, name) in zip(geojsons, names) if topo['type'] != 'FeatureCollection']
-    
-    if bad_types:
-        raise KnownUnknown('%s.get_tiles encountered a non-FeatureCollection type in %s sub-layer: "%s"' % ((__name__, ) + bad_types[0]))
-    
-    return geojsons
 
 def mercator((x, y)):
     ''' Project an (x, y) tuple to spherical mercator.
@@ -94,14 +66,12 @@ def encode(file, features, zoom, is_clipped):
 
     write_to_file(file, geojson, zoom)
 
-def merge(file, names, config, coord):
+def merge(file, names, tiles, config, coord):
     ''' Retrieve a list of GeoJSON tile responses and merge them into one.
     
         get_tiles() retrieves data and performs basic integrity checks.
     '''
-    inputs = get_tiles(names, config, coord)
-    output = dict(zip(names, inputs))
-
+    output = dict(zip(names, tiles))
     write_to_file(file, output, coord.zoom)
 
 def write_to_file(file, geojson, zoom):

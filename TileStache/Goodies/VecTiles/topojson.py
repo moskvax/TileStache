@@ -1,41 +1,7 @@
 from shapely.wkb import loads
 import json
 
-from ... import getTile
 from ...Core import KnownUnknown
-
-def get_tiles(names, config, coord):
-    ''' Retrieve a list of named TopoJSON layer tiles from a TileStache config.
-    
-        Check integrity and compatibility of each, looking at known layers,
-        correct JSON mime-types, "Topology" in the type attributes, and
-        matching affine transformations.
-    '''
-    unknown_layers = set(names) - set(config.layers.keys())
-    
-    if unknown_layers:
-        raise KnownUnknown("%s.get_tiles didn't recognize %s when trying to load %s." % (__name__, ', '.join(unknown_layers), ', '.join(names)))
-    
-    layers = [config.layers[name] for name in names]
-    mimes, bodies = zip(*[getTile(layer, coord, 'topojson') for layer in layers])
-    bad_mimes = [(name, mime) for (mime, name) in zip(mimes, names) if not mime.endswith('/json')]
-    
-    if bad_mimes:
-        raise KnownUnknown('%s.get_tiles encountered a non-JSON mime-type in %s sub-layer: "%s"' % ((__name__, ) + bad_mimes[0]))
-    
-    topojsons = map(json.loads, bodies)
-    bad_types = [(name, topo['type']) for (topo, name) in zip(topojsons, names) if topo['type'] != 'Topology']
-    
-    if bad_types:
-        raise KnownUnknown('%s.get_tiles encountered a non-Topology type in %s sub-layer: "%s"' % ((__name__, ) + bad_types[0]))
-    
-    transforms = [topo['transform'] for topo in topojsons]
-    unique_xforms = set([tuple(xform['scale'] + xform['translate']) for xform in transforms])
-    
-    if len(unique_xforms) > 1:
-        raise KnownUnknown('%s.get_tiles encountered incompatible transforms: %s' % (__name__, list(unique_xforms)))
-    
-    return topojsons
 
 def update_arc_indexes(geometry, merged_arcs, old_arcs):
     ''' Updated geometry arc indexes, and add arcs to merged_arcs along the way.
@@ -190,12 +156,16 @@ def encode(file, features, bounds, is_clipped):
     
     json.dump(result, file, separators=(',', ':'))
 
-def merge(file, names, config, coord):
+def merge(file, names, inputs, config, coord):
     ''' Retrieve a list of TopoJSON tile responses and merge them into one.
     
         get_tiles() retrieves data and performs basic integrity checks.
     '''
-    inputs = get_tiles(names, config, coord)
+    transforms = [topo['transform'] for topo in inputs]
+    unique_xforms = set([tuple(xform['scale'] + xform['translate']) for xform in transforms])
+    
+    if len(unique_xforms) > 1:
+        raise KnownUnknown('%s.merge encountered incompatible transforms: %s' % (__name__, list(unique_xforms)))
     
     output = {
         'type': 'Topology',

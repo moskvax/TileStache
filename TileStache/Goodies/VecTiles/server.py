@@ -12,6 +12,10 @@ from urlparse import urljoin, urlparse
 from urllib import urlopen
 from os.path import exists
 
+import json
+from ... import getTile
+from ...Core import KnownUnknown
+
 try:
     from psycopg2.extras import RealDictCursor
     from psycopg2 import connect
@@ -320,13 +324,35 @@ class MultiResponse:
         '''
         '''
         if format == 'TopoJSON':
-            topojson.merge(out, self.names, self.config, self.coord)
+            topojson.merge(out, self.names, self.get_tiles(format), self.config, self.coord)
         
         elif format == 'JSON':
-            geojson.merge(out, self.names, self.config, self.coord)
+            geojson.merge(out, self.names, self.get_tiles(format), self.config, self.coord)
         
         else:
             raise ValueError(format)
+
+    def get_tiles(self, format):
+        unknown_layers = set(self.names) - set(self.config.layers.keys())
+    
+        if unknown_layers:
+            raise KnownUnknown("%s.get_tiles didn't recognize %s when trying to load %s." % (__name__, ', '.join(unknown_layers), ', '.join(self.names)))
+        
+        layers = [self.config.layers[name] for name in self.names]
+        mimes, bodies = zip(*[getTile(layer, self.coord, format.lower()) for layer in layers])
+        bad_mimes = [(name, mime) for (mime, name) in zip(mimes, self.names) if not mime.endswith('/json')]
+        
+        if bad_mimes:
+            raise KnownUnknown('%s.get_tiles encountered a non-JSON mime-type in %s sub-layer: "%s"' % ((__name__, ) + bad_mimes[0]))
+        
+        tiles = map(json.loads, bodies)
+        bad_types = [(name, topo['type']) for (topo, name) in zip(tiles, self.names) if topo['type'] != ('FeatureCollection' if (format.lower()=='json') else 'Topology')]
+        
+        if bad_types:
+            raise KnownUnknown('%s.get_tiles encountered a non-%sCollection type in %s sub-layer: "%s"' % ((__name__, ('Feature' if (format.lower()=='json') else 'Topology'), ) + bad_types[0]))
+        
+        return tiles
+
 
 def query_columns(dbinfo, srid, subquery, bounds):
     ''' Get information about the columns returned for a subquery.
