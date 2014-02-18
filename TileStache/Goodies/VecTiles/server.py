@@ -26,6 +26,8 @@ from . import mvt, geojson, topojson, oscimap
 from ...Geography import SphericalMercator
 from ModestMaps.Core import Point
 
+import logging
+
 tolerances = [6378137 * 2 * pi / (2 ** (zoom + 8)) for zoom in range(20)]
 
 class Provider:
@@ -346,7 +348,7 @@ def query_columns(dbinfo, srid, subquery, bounds):
             bbox = 'ST_SetSRID(%s, %d)' % (bbox, srid)
         
             query = subquery.replace('!bbox!', bbox)
-        
+            logging.debug('sub-query: %s', query + '\n LIMIT 1')
             db.execute(query + '\n LIMIT 1') # newline is important here, to break out of comments.
             row = db.fetchone()
             
@@ -366,6 +368,7 @@ def query_columns(dbinfo, srid, subquery, bounds):
 
 def get_features(dbinfo, query):
     with Connection(dbinfo) as db:
+        logging.debug('query: %s', query)
         db.execute(query)
         
         features = []
