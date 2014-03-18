@@ -138,6 +138,19 @@ def mergePathInfo(layer, coord, extension):
     
     return '/%(layer)s/%(z)d/%(x)d/%(y)d.%(extension)s' % locals()
 
+def isNotValidLayer(layer, config):
+    if not layer:
+        return True
+    if (layer not in config.layers):
+        if (layer.find("+") != -1):
+            multi_providers = list(ll for ll in config.layers if hasattr(config.layers[ll].provider, 'names'))
+            for l in layer.split("+"):
+                if ((l not in config.layers) or (l in multi_providers)):
+                    return True
+            return False
+        return True
+    return False
+
 def requestLayer(config, path_info):
     """ Return a Layer.
     
@@ -175,10 +188,15 @@ def requestLayer(config, path_info):
 
     layername = splitPathInfo(path_info)[0]
     
-    if layername not in config.layers:
+    if isNotValidLayer(layername, config):
         raise Core.KnownUnknown('"%s" is not a layer I know about. Here are some that I do know about: %s.' % (layername, ', '.join(sorted(config.layers.keys()))))
     
-    return config.layers[layername]
+    customLayer = layername.find("+")!=-1
+
+    if customLayer:
+        config.layers["+"].provider(config.layers["+"], **{'names': layername.split("+")})
+    
+    return config.layers[layername] if not customLayer else config.layers["+"]
 
 def requestHandler(config_hint, path_info, query_string=None):
     """ Generate a mime-type and response body for a given request.
@@ -369,7 +387,7 @@ class WSGITileServer:
         # WSGI behavior is different from CGI behavior, because we may not want
         # to return a chatty rummy for likely-deployed WSGI vs. testing CGI.
         #
-        if layer and layer not in self.config.layers:
+        if isNotValidLayer(layer, self.config):
             return self._response(start_response, 404)
 
         path_info = environ.get('PATH_INFO', None)
