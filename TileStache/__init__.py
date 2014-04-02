@@ -180,26 +180,9 @@ def requestLayer(config, path_info):
     
     return config.layers[layername]
 
-def requestHandler(config_hint, path_info, query_string=None):
-    """ Generate a mime-type and response body for a given request.
-    
-        This function is documented as part of TileStache's public API:
-            http://tilestache.org/doc/#tilestache-requesthandler
-
-        TODO: replace this with requestHandler2() in TileStache 2.0.0.
-        
-        Calls requestHandler2().
-    """
-    status_code, headers, content = requestHandler2(config_hint, path_info, query_string)
-    mimetype = headers.get('Content-Type')
-    
-    return mimetype, content
-
-def requestHandler2(config_hint, path_info, query_string=None, script_name=''):
+def requestHandler(config_hint, path_info, query_string=None, script_name=''):
     """ Generate a set of headers and response body for a given request.
     
-        TODO: Replace requestHandler() with this function in TileStache 2.0.0.
-        
         Requires a configuration and PATH_INFO (e.g. "/example/0/0/0.png").
         
         Config_hint parameter can be a path string for a JSON configuration file
@@ -295,7 +278,7 @@ def cgiHandler(environ, config='./tilestache.cfg', debug=False):
     query_string = environ.get('QUERY_STRING', None)
     script_name = environ.get('SCRIPT_NAME', None)
     
-    status_code, headers, content = requestHandler2(config, path_info, query_string, script_name)
+    status_code, headers, content = requestHandler(config, path_info, query_string, script_name)
     
     headers.setdefault('Content-Length', str(len(content)))
 
@@ -376,7 +359,7 @@ class WSGITileServer:
         query_string = environ.get('QUERY_STRING', None)
         script_name = environ.get('SCRIPT_NAME', None)
         
-        status_code, headers, content = requestHandler2(self.config, path_info, query_string, script_name)
+        status_code, headers, content = requestHandler(self.config, path_info, query_string, script_name)
         
         return self._response(start_response, status_code, str(content), headers)
 
@@ -418,7 +401,8 @@ def modpythonHandler(request):
     path_info = request.path_info
     query_string = request.args
     
-    mimetype, content = requestHandler(config_path, path_info, query_string)
+    status_code, headers, content = requestHandler(config_path, path_info, query_string)
+    mimetype = headers.get('Content-Type')
 
     request.status = apache.HTTP_OK
     request.content_type = mimetype
