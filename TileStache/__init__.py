@@ -66,6 +66,11 @@ def getTile(layer, coord, extension, ignore_cached=False):
 
     return mime, body
 
+def unknownLayerMessage(config, unknown_layername):
+    """ A message that notifies that the given layer is unknown and lists out the known layers. 
+    """
+    return '"%s" is not a layer I know about. \nHere are some that I do know about: \n %s.' % (unknown_layername, '\n '.join(sorted(config.layers.keys())))
+
 def getPreview(layer):
     """ Get a type string and dynamic map viewer HTML for a given layer.
     """
@@ -176,7 +181,7 @@ def requestLayer(config, path_info):
     layername = splitPathInfo(path_info)[0]
     
     if layername not in config.layers:
-        raise Core.KnownUnknown('"%s" is not a layer I know about. Here are some that I do know about: %s.' % (layername, ', '.join(sorted(config.layers.keys()))))
+        raise Core.KnownUnknown(unknownLayerMessage(config, layername))
     
     return config.layers[layername]
 
@@ -370,7 +375,7 @@ class WSGITileServer:
         # to return a chatty rummy for likely-deployed WSGI vs. testing CGI.
         #
         if layer and layer not in self.config.layers:
-            return self._response(start_response, 404)
+            return self._response(start_response, 404, str(unknownLayerMessage(self.config, layer)))
 
         path_info = environ.get('PATH_INFO', None)
         query_string = environ.get('QUERY_STRING', None)
