@@ -142,9 +142,9 @@ def isNotValidLayer(layer, config):
     if not layer:
         return True
     if (layer not in config.layers):
-        if (layer.find("+") != -1):
+        if (layer.find(",") != -1):
             multi_providers = list(ll for ll in config.layers if hasattr(config.layers[ll].provider, 'names'))
-            for l in layer.split("+"):
+            for l in layer.split(","):
                 if ((l not in config.layers) or (l in multi_providers)):
                     return True
             return False
@@ -191,12 +191,12 @@ def requestLayer(config, path_info):
     if isNotValidLayer(layername, config):
         raise Core.KnownUnknown('"%s" is not a layer I know about. Here are some that I do know about: %s.' % (layername, ', '.join(sorted(config.layers.keys()))))
     
-    customLayer = layername.find("+")!=-1
+    customLayer = layername.find(",")!=-1
 
     if customLayer:
-        config.layers["+"].provider(config.layers["+"], **{'names': layername.split("+")})
+        config.layers[","].provider(config.layers[","], **{'names': layername.split(",")})
     
-    return config.layers[layername] if not customLayer else config.layers["+"]
+    return config.layers[layername] if not customLayer else config.layers[","]
 
 def requestHandler(config_hint, path_info, query_string=None):
     """ Generate a mime-type and response body for a given request.
