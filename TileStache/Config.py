@@ -124,6 +124,10 @@ class Configuration:
         self.dirpath = dirpath
         self.layers = {}
         
+        # adding custom_layer to extend multiprovider to support comma separated layernames
+        self.custom_layer_name = ","
+        self.custom_layer_dict = {'provider': {'class': 'TileStache.Goodies.VecTiles:MultiProvider', 'kwargs': {'names': []}}}
+        
         self.index = 'text/plain', 'TileStache bellows hello.'
 
 class Bounds:
@@ -204,7 +208,7 @@ def buildConfiguration(config_dict, dirpath='.'):
         URL including the "file://" prefix.
     """
     scheme, h, path, p, q, f = urlparse(dirpath)
-    
+
     if scheme in ('', 'file'):
         sys.path.insert(0, path)
     
@@ -215,6 +219,8 @@ def buildConfiguration(config_dict, dirpath='.'):
     
     for (name, layer_dict) in config_dict.get('layers', {}).items():
         config.layers[name] = _parseConfigfileLayer(layer_dict, config, dirpath)
+
+    config.layers[config.custom_layer_name] = _parseConfigfileLayer(config.custom_layer_dict, config, dirpath)
 
     if 'index' in config_dict:
         index_href = urljoin(dirpath, config_dict['index'])
