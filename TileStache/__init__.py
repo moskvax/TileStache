@@ -46,6 +46,9 @@ import Config
 _pathinfo_pat = re.compile(r'^/?(?P<l>\w.+)/(?P<z>\d+)/(?P<x>-?\d+)/(?P<y>-?\d+)\.(?P<e>\w+)$')
 _preview_pat = re.compile(r'^/?(?P<l>\w.+)/(preview\.html)?$')
 
+# symbol used to separate layers when specifying more than one layer
+_delimiter = ','
+
 def getTile(layer, coord, extension, ignore_cached=False):
     ''' Get a type string and tile binary for a given request layer tile.
     
@@ -142,9 +145,9 @@ def isValidLayer(layer, config):
     if not layer:
         return False
     if (layer not in config.layers):
-        if (layer.find(",") != -1):
+        if (layer.find(_delimiter) != -1):
             multi_providers = list(ll for ll in config.layers if hasattr(config.layers[ll].provider, 'names'))
-            for l in layer.split(","):
+            for l in layer.split(_delimiter):
                 if ((l not in config.layers) or (l in multi_providers)):
                     return False
             return True
@@ -191,12 +194,12 @@ def requestLayer(config, path_info):
     if not isValidLayer(layername, config):
         raise Core.KnownUnknown('"%s" is not a layer I know about. Here are some that I do know about: %s.' % (layername, ', '.join(sorted(config.layers.keys()))))
     
-    customLayer = layername.find(",")!=-1
+    customLayer = layername.find(_delimiter)!=-1
 
     if customLayer:
-        config.layers[","].provider(config.layers[","], **{'names': layername.split(",")})
+        config.layers[_delimiter].provider(config.layers[_delimiter], **{'names': layername.split(_delimiter)})
     
-    return config.layers[layername] if not customLayer else config.layers[","]
+    return config.layers[layername] if not customLayer else config.layers[_delimiter]
 
 def requestHandler(config_hint, path_info, query_string=None):
     """ Generate a mime-type and response body for a given request.
