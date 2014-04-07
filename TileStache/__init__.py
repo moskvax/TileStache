@@ -268,10 +268,11 @@ def requestHandler2(config_hint, path_info, query_string=None, script_name=''):
             headers.setdefault('Expires', expires.strftime('%a %d %b %Y %H:%M:%S GMT'))
             headers.setdefault('Cache-Control', 'public, max-age=%d' % layer.max_cache_age)
 
-    except Core.KnownUnknown, e:
+    except (Core.KnownUnknown, Exception), e:
+        logging.exception(e)
         out = StringIO()
         
-        print >> out, 'Known unknown!'
+        print >> out, 'Known unknown!' if isinstance(e,Core.KnownUnknown) else 'Exception!'
         print >> out, e
         print >> out, ''
         print >> out, '\n'.join(Core._rummy())
