@@ -194,12 +194,12 @@ def requestLayer(config, path_info):
     if not isValidLayer(layername, config):
         raise Core.KnownUnknown('"%s" is not a layer I know about. Here are some that I do know about: %s.' % (layername, ', '.join(sorted(config.layers.keys()))))
     
-    customLayer = layername.find(_delimiter)!=-1
+    custom_layer = layername.find(_delimiter)!=-1
 
-    if customLayer:
+    if custom_layer:
         config.layers[config.custom_layer_name].provider(config.layers[config.custom_layer_name], **{'names': layername.split(_delimiter)})
     
-    return config.layers[layername] if not customLayer else config.layers[config.custom_layer_name]
+    return config.layers[layername] if not custom_layer else config.layers[config.custom_layer_name]
 
 def requestHandler(config_hint, path_info, query_string=None):
     """ Generate a mime-type and response body for a given request.
