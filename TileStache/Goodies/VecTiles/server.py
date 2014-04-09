@@ -322,12 +322,12 @@ class MultiResponse:
 
         elif format == 'OpenScienceMap':
             features = []
-            layers = [self.config.layers[name] for name in self.names]
-            for layer in layers:
+            layers = [(name, self.config.layers[name]) for name in self.names]
+            for (name, layer) in layers:
                 width, height = layer.dim, layer.dim
                 tile = layer.provider.renderTile(width, height, layer.projection.srs, self.coord)
                 if isinstance(tile,EmptyResponse): continue
-                features.extend(get_features(tile.dbinfo, tile.query["OpenScienceMap"]))
+                features.extend(get_features(tile.dbinfo, tile.query["OpenScienceMap"], dict(layer_name=name)))
             oscimap.encode(out, features, self.coord)
         
         else:
