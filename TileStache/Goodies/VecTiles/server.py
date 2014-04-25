@@ -174,7 +174,7 @@ class Provider:
             return 'application/json', 'TopoJSON'
         
         else:
-            raise ValueError(extension)
+            raise ValueError(extension + " is not a valid extension")
 
 class MultiProvider:
     ''' VecTiles provider to gather PostGIS tiles into a single multi-response.
@@ -215,7 +215,7 @@ class MultiProvider:
             return 'application/json', 'TopoJSON'
         
         else:
-            raise ValueError(extension)
+            raise ValueError(extension + " is not a valid extension for responses with multiple layers")
 
 class Connection:
     ''' Context manager for Postgres connections.
@@ -285,7 +285,7 @@ class Response:
             topojson.encode(out, features, (ll.lon, ll.lat, ur.lon, ur.lat), self.clip)
         
         else:
-            raise ValueError(format)
+            raise ValueError(format + " is not supported")
 
 class EmptyResponse:
     ''' Simple empty response renders valid MVT or GeoJSON with no features.
@@ -308,7 +308,7 @@ class EmptyResponse:
             topojson.encode(out, [], (ll.lon, ll.lat, ur.lon, ur.lat), False)
         
         else:
-            raise ValueError(format)
+            raise ValueError(format + " is not supported")
 
 class MultiResponse:
     '''
@@ -330,7 +330,7 @@ class MultiResponse:
             geojson.merge(out, self.names, self.get_tiles(format), self.config, self.coord)
         
         else:
-            raise ValueError(format)
+            raise ValueError(format + " is not supported for responses with multiple layers")
 
     def get_tiles(self, format):
         unknown_layers = set(self.names) - set(self.config.layers.keys())
