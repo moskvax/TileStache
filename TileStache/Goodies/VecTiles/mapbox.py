@@ -23,27 +23,21 @@ def encode(file, features, coord, layer_name):
 
         tile.addFeatures(features, coord, extents, layer_name)
 
-        # tile.complete()
-
         data = tile.tile.SerializeToString()
-        logging.info(tile.tile)
         file.write(struct.pack(">I", len(data)))
         file.write(data)
 
-def merge(file, features, coord):
+def merge(file, feature_layers, coord):
     ''' Retrieve a list of GeoJSON tile responses and merge them into one.
     
         get_tiles() retrieves data and performs basic integrity checks.
     '''
     tile = VectorTile(extents)
 
-    for feature in features:
-        name = feature['name']
-        feats= feature['features']
-        tile.addFeatures(feats, coord, extents, name)
+    for layer in feature_layers:
+        tile.addFeatures(layer['features'], coord, extents, layer['name'])
 
     data = tile.tile.SerializeToString()
-    logging.info(tile.tile)
     file.write(struct.pack(">I", len(data)))
     file.write(data)
 
@@ -59,13 +53,6 @@ class VectorTile:
         self.values = []
         self.pixels = []
 
-
-    # def complete(self):
-        # if self.cur_key - attrib_offset > 0:
-        #     self.tile.num_keys = self.cur_key - attrib_offset
-
-        # if self.cur_val - attrib_offset > 0:
-        #     self.tile.num_vals = self.cur_val - attrib_offset
 
     def addFeatures(self, features, coord, extents, layer_name=""):
         self.layer         = self.tile.layers.add()
@@ -108,7 +95,6 @@ class VectorTile:
 
         # add coordinates
         for coordinate in geom.coordinates:
-            logging.info(coordinate)
             if coordinate <= 4096 and coordinate > 0:
                 f.geometry.append(coordinate)
 

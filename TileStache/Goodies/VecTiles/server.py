@@ -324,14 +324,14 @@ class MultiResponse:
             geojson.merge(out, self.names, self.config, self.coord)
         
         elif format == 'Mapbox':
-            features = []
+            feature_layers = []
             layers = [self.config.layers[name] for name in self.names]
             for layer in layers:
                 width, height = layer.dim, layer.dim
                 tile = layer.provider.renderTile(width, height, layer.projection.srs, self.coord)
                 if isinstance(tile,EmptyResponse): continue
-                features.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["Mapbox"])})
-            mapbox.merge(out, features, self.coord)
+                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["Mapbox"])})
+            mapbox.merge(out, feature_layers, self.coord)
 
         else:
             raise ValueError(format)
