@@ -92,8 +92,12 @@ class VectorTile:
 
         geom.parseGeometry(feature[0])
         coordinates = []
-        for coords in self._chunker(geom.coordinates,2):
-            coordinates.append((coords[0], coords[1]))
+        points = self._chunker(geom.coordinates,2) # x,y corodinates grouped as one point. 
+        for i, coords in enumerate(points):
+            coordinates.append({
+                'x': coords[0], 
+                'y': coords[1],
+                'cmd': self._get_cmd_type(f.type, i, len(points))})
         
         it = 0
         length = 0
@@ -102,9 +106,7 @@ class VectorTile:
             if it >= len(coordinates):
                 break;
             
-            x,y = coordinates[it][0],coordinates[it][1]
-            
-            vtx_cmd= self._get_cmd_type(f.type, geom.num_points, it)
+            x,y,vtx_cmd = coordinates[it]['x'],coordinates[it]['y'],coordinates[it]['cmd']
             
             if vtx_cmd != cmd:
                 if (cmd_idx >= 0):
@@ -130,8 +132,8 @@ class VectorTile:
 
                 if (it+2 <= len(coordinates)):
                     next_coord = coordinates[it+1]
-                    if self._get_cmd_type(f.type, geom.num_points, it) == CMD_LINE_TO:
-                        next_x, next_y = next_coord[0], next_coord[1]
+                    if next_coord['cmd'] == CMD_LINE_TO:
+                        next_x, next_y = next_coord['x'], next_coord['y']
                         next_dx = fabs(cur_x - int(floor((next_x * path_multiplier) + 0.5)))
                         next_dy = fabs(cur_y - int(floor((next_y * path_multiplier) + 0.5)))
                         if ((next_dx == 0 and next_dy >= tolerance) or (next_dy == 0 and next_dx >= tolerance)):
@@ -155,6 +157,7 @@ class VectorTile:
             elif vtx_cmd == CMD_SEG_END:
                 if prev_cmd != CMD_SEG_END:
                     length = length + 1
+                    break;
             else:
                 raise Exception("Unknown command type: '%s'" % vtx_cmd)
             
@@ -172,15 +175,15 @@ class VectorTile:
 
 
     # TODO: figure out if cmd can change within a feature geom
-    def _get_cmd_type(self, gtype, gpoints, glen):
+    def _get_cmd_type(self, gtype, i, points):
         cmd_type = -1
         if gtype == self.tile.Point:
             cmd_type = CMD_MOVE_TO
         elif gtype == self.tile.Polygon or gtype == self.tile.LineString:
             cmd_type = CMD_LINE_TO
-        if glen==0:
+        if i==0:
             cmd_type = CMD_MOVE_TO
-        if gtype == self.tile.Polygon and glen>=gpoints:
+        if gtype == self.tile.Polygon and i+1==points:
             cmd_type = CMD_SEG_END
         return cmd_type
 
@@ -191,7 +194,7 @@ class VectorTile:
         return (length << cmd_bits) | (cmd & ((1 << cmd_bits) - 1))
 
     def _chunker(self, seq, size):
-        return (seq[pos:pos + size] for pos in xrange(0, len(seq), size))
+        return [seq[pos:pos + size] for pos in xrange(0, len(seq), size)]
 
     def _handle_skipped_last(self, f, skipped_index, cur_x, cur_y, x_, y_):
         last_x = f.geometry[skipped_index - 2]
