@@ -281,12 +281,9 @@ class GeomEncoder:
         # flip upside down
         yy = self.tileSize - int(round(y))
         
-        if self.first or xx - self.lastX != 0 or yy - self.lastY != 0:
-            self.coordinates.append(xx - self.lastX)
-            self.coordinates.append(yy - self.lastY)
-            self.num_points += 1
-        else:
-            self.dropped += 1;
+        self.coordinates.append(xx)
+        self.coordinates.append(yy)
+        self.num_points += 1
         
         self.first = False
         self.lastX = xx
@@ -319,13 +316,13 @@ class GeomEncoder:
             
             self.num_points = 0;
             
-            # skip the last point
-            for _ in xrange(0,num_points-1):
+            # dont skip the last point
+            for _ in xrange(0,num_points):
                 self.parsePoint(reader,dimensions)
 
-            # skip the last point                
-            reader.unpack_double()
-            reader.unpack_double()
+            # dont skip the last point                
+            # reader.unpack_double()
+            # reader.unpack_double()
             if dimensions == 3:
                 reader.unpack_double()
                 

@@ -13,7 +13,6 @@ import struct
 # coordindates are scaled to this range within tile
 extents = 4096
 cmd_bits = 3
-path_multiplier = 16
 tolerance = 0
 
 CMD_MOVE_TO = 1
@@ -33,7 +32,6 @@ def encode(file, features, coord, layer_name):
         tile.addFeatures(features, coord, extents, layer_name)
 
         data = tile.tile.SerializeToString()
-        file.write(struct.pack(">I", len(data)))
         file.write(data)
 
 def merge(file, feature_layers, coord):
@@ -47,7 +45,6 @@ def merge(file, feature_layers, coord):
         tile.addFeatures(layer['features'], coord, extents, layer['name'])
 
     data = tile.tile.SerializeToString()
-    file.write(struct.pack(">I", len(data)))
     file.write(data)
 
 class VectorTile:
@@ -67,12 +64,12 @@ class VectorTile:
         self.values = []
         self.pixels = []
         for feature in features:
-            self.addFeature(feature, coord)
+            self.addFeature(feature)
 
-    def addFeature(self, feature, coord):
+    def addFeature(self, feature):
         geom = self.geomencoder
-        x_ = coord.column
-        y_ = coord.row
+        x_, y_ = 0, 0
+
         cmd= -1
         cmd_idx = -1
         vtx_cmd = -1
@@ -122,8 +119,8 @@ class VectorTile:
                     self._handle_skipped_last(f, skipped_index, cur_x, cur_y, x_, y_)
                 
                 # Compute delta to the previous coordinate.
-                cur_x = int(floor((x * path_multiplier) + 0.5))
-                cur_y = int(floor((y * path_multiplier) + 0.5))
+                cur_x = int(x)
+                cur_y = int(y)
 
                 dx = cur_x - x_
                 dy = cur_y - y_
@@ -134,8 +131,8 @@ class VectorTile:
                     next_coord = coordinates[it+1]
                     if next_coord['cmd'] == CMD_LINE_TO:
                         next_x, next_y = next_coord['x'], next_coord['y']
-                        next_dx = fabs(cur_x - int(floor((next_x * path_multiplier) + 0.5)))
-                        next_dy = fabs(cur_y - int(floor((next_y * path_multiplier) + 0.5)))
+                        next_dx = fabs(cur_x - int(next_x))
+                        next_dy = fabs(cur_y - int(next_y))
                         if ((next_dx == 0 and next_dy >= tolerance) or (next_dy == 0 and next_dx >= tolerance)):
                             sharp_turn_ahead = True
 
@@ -157,7 +154,6 @@ class VectorTile:
             elif vtx_cmd == CMD_SEG_END:
                 if prev_cmd != CMD_SEG_END:
                     length = length + 1
-                    break;
             else:
                 raise Exception("Unknown command type: '%s'" % vtx_cmd)
             
@@ -168,7 +164,7 @@ class VectorTile:
         if (skipped_last and skipped_index > 1): 
             # if we skipped previous vertex we just update it to the last one here.
             handle_skipped_last(f, skipped_index, cur_x, cur_y, x_, y_)
-        
+
         # Update the last length/command value.
         if (cmd_idx >= 0):
             f.geometry.__setitem__(cmd_idx, self._encode_cmd_length(cmd, length))
