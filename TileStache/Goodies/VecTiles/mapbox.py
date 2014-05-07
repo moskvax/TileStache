@@ -110,33 +110,30 @@ class VectorTile:
 
     def _handle_attr(self, layer, feature, props):
         for k,v in props.items():
-            if k not in self.keys:
-                layer.keys.append(k)
-                self.keys.append(k)
-                idx = self.keys.index(k)
-                feature.tags.append(idx)
-            else:
-                idx = self.keys.index(k)
-                feature.tags.append(idx)
-            if v not in self.values:
-                if (isinstance(v,bool)):
-                    val = layer.values.add()
-                    val.bool_value = v
-                elif (isinstance(v,str)) or (isinstance(v,unicode)):
-                    val = layer.values.add()
-                    val.string_value = unicode(v,'utf8')
-                elif (isinstance(v,int)):
-                    val = layer.values.add()
-                    val.int_value = v
-                elif (isinstance(v,float)) or (isinstance(v,long)):
-                    val = layer.values.add()
-                    val.double_value = v
-                # else:
-                #     # do nothing because we know kind is sometimes <type NoneType>
-                #     logging.info("Unknown value type: '%s' for key: '%s'", type(v), k)
-                #     raise Exception("Unknown value type: '%s'" % type(v))
-            self.values.append(v)
-            feature.tags.append(self.values.index(v))
+            if v is not None:
+                if k not in self.keys:
+                    layer.keys.append(k)
+                    self.keys.append(k)
+                feature.tags.append(self.keys.index(k))
+                if v not in self.values:
+                    self.values.append(v)
+                    if (isinstance(v,bool)):
+                        val = layer.values.add()
+                        val.bool_value = v
+                    elif (isinstance(v,str)) or (isinstance(v,unicode)):
+                        val = layer.values.add()
+                        val.string_value = unicode(v,'utf8')
+                    elif (isinstance(v,int)) or (isinstance(v,long)):
+                        val = layer.values.add()
+                        val.int_value = v
+                    elif (isinstance(v,float)):
+                        val = layer.values.add()
+                        val.double_value = v
+                    # else:
+                    #     # do nothing because we know kind is sometimes <type NoneType>
+                    #     logging.info("Unknown value type: '%s' for key: '%s'", type(v), k)
+                    #     raise Exception("Unknown value type: '%s'" % type(v))
+                feature.tags.append(self.values.index(v))
 
     def _handle_skipped_last(self, f, skipped_index, cur_x, cur_y, x_, y_):
         last_x = f.geometry[skipped_index - 2]
