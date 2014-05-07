@@ -1,6 +1,5 @@
 import types
 from Mapbox import vector_tile_pb2
-from Mapbox.GeomEncoder import GeomEncoder
 from shapely.wkb import loads
 
 from math import floor, fabs
@@ -8,7 +7,6 @@ from math import floor, fabs
 from TileStache.Core import KnownUnknown
 import re
 import logging
-import struct
 
 # coordindates are scaled to this range within tile
 extents = 4096
@@ -42,7 +40,7 @@ def merge(file, feature_layers, coord):
     tile = VectorTile(extents)
 
     for layer in feature_layers:
-        tile.addFeatures(layer['features'], coord, extents, layer['name'])
+        tile.addFeatures(layer['features'], coord, layer['name'])
 
     data = tile.tile.SerializeToString()
     file.write(data)
@@ -51,23 +49,162 @@ class VectorTile:
     """
     """
     def __init__(self, extents, layer_name=""):
-        self.geomencoder   = GeomEncoder(extents)
         self.tile          = vector_tile_pb2.tile()
+        self.extents       = extents
 
-    def addFeatures(self, features, coord, extents, layer_name=""):
+    def addFeatures(self, features, coord, layer_name=""):
         self.layer         = self.tile.layers.add()
         self.layer.name    = layer_name
         self.layer.version = 2
-        self.layer.extent  = extents
+        self.layer.extent  = self.extents
         self.feature_count = 0
         self.keys   = []
         self.values = []
-        self.pixels = []
+
         for feature in features:
             self.addFeature(feature)
 
     def addFeature(self, feature):
-        geom = self.geomencoder
+        f = self.layer.features.add()
+        self.feature_count += 1
+        f.id = self.feature_count
+        
+        # osm_id or the hash is passed in as a feature tag 'uid'
+        if len(feature) >= 2:
+            feature[1].update(uid=feature[2])
+
+        # properties
+        self._handle_attr(self.layer, f, feature[1])
+
+        # geometry
+        shape = loads(feature[0])
+        f.type = self._get_feature_type(shape)
+        self._geo_encode(f, shape)
+        
+
+    def _get_cmd_type(self, gtype, i, num_points):
+        cmd_type = -1
+        if gtype == self.tile.Point:
+            cmd_type = CMD_MOVE_TO
+        elif gtype == self.tile.Polygon or gtype == self.tile.LineString:
+            cmd_type = CMD_LINE_TO
+        if i==0:
+            cmd_type = CMD_MOVE_TO
+        if gtype == self.tile.Polygon and i+1==num_points:
+            cmd_type = CMD_SEG_END
+        return cmd_type
+
+    def _get_feature_type(self, shape):
+        if shape.type == 'Point' or shape.type == 'MultiPoint':
+            return self.tile.Point
+        elif shape.type == 'LineString' or shape.type == 'MultiLineString':
+            return self.tile.LineString
+        elif shape.type == 'Polygon' or shape.type == 'MultiPolygon':
+            return self.tile.Polygon
+
+    def _encode_cmd_length(self, cmd, length):
+        return (length << cmd_bits) | (cmd & ((1 << cmd_bits) - 1))
+
+    def _chunker(self, seq, size):
+        return [seq[pos:pos + size] for pos in xrange(0, len(seq), size)]
+
+    def _handle_attr(self, layer, feature, props):
+        for k,v in props.items():
+            if k not in self.keys:
+                layer.keys.append(k)
+                self.keys.append(k)
+                idx = self.keys.index(k)
+                feature.tags.append(idx)
+            else:
+                idx = self.keys.index(k)
+                feature.tags.append(idx)
+            if v not in self.values:
+                if (isinstance(v,bool)):
+                    val = layer.values.add()
+                    val.bool_value = v
+                elif (isinstance(v,str)) or (isinstance(v,unicode)):
+                    val = layer.values.add()
+                    val.string_value = unicode(v,'utf8')
+                elif (isinstance(v,int)):
+                    val = layer.values.add()
+                    val.int_value = v
+                elif (isinstance(v,float)) or (isinstance(v,long)):
+                    val = layer.values.add()
+                    val.double_value = v
+                # else:
+                #     # do nothing because we know kind is sometimes <type NoneType>
+                #     logging.info("Unknown value type: '%s' for key: '%s'", type(v), k)
+                #     raise Exception("Unknown value type: '%s'" % type(v))
+            self.values.append(v)
+            feature.tags.append(self.values.index(v))
+
+    def _handle_skipped_last(self, f, skipped_index, cur_x, cur_y, x_, y_):
+        last_x = f.geometry[skipped_index - 2]
+        last_y = f.geometry[skipped_index - 1]
+        last_dx = ((last_x >> 1) ^ (-(last_x & 1)))
+        last_dy = ((last_y >> 1) ^ (-(last_y & 1)))
+        dx = cur_x - x_ + last_dx
+        dy = cur_y - y_ + last_dy
+        x_ = cur_x
+        y_ = cur_y
+        f.geometry.__setitem__(skipped_index - 2, ((dx << 1) ^ (dx >> 31)))
+        f.geometry.__setitem__(skipped_index - 1, ((dy << 1) ^ (dy >> 31)))
+
+    def _process_points(self, geom_type, geom_coordinates):
+        coordinates = []
+        points = self._chunker(geom_coordinates,2) # x,y coordinates grouped as one point. 
+        for i, coords in enumerate(points):
+            coordinates.append({
+                'x': coords[0], 
+                'y': coords[1],
+                'cmd': self._get_cmd_type(geom_type, i, len(points))})
+        return coordinates
+
+    def _parseGeometry(self, shape):
+        coordinates = []
+
+        def _get_point_obj(x, y):
+            coordinates.append(x)
+            coordinates.append(self.extents - y)
+
+        def _get_arc_obj(line):
+            [ _get_point_obj(x,y) for (x,y) in line.coords ]
+
+        if shape.type == 'GeometryCollection':
+            # do nothing
+            coordinates = []
+    
+        elif shape.type == 'Point':
+            _get_point_obj(shape.x,shape.y)
+    
+        elif shape.type == 'LineString':
+            _get_arc_obj(shape)
+    
+        elif shape.type == 'Polygon':
+            rings = [shape.exterior] + list(shape.interiors)
+            for ring in rings:
+                _get_arc_obj(ring)
+        
+        elif shape.type == 'MultiPoint':
+            for point in shape.geoms:
+                _get_point_obj(point.x, point.y)
+        
+        elif shape.type == 'MultiLineString':
+            for line in shape.geoms:
+                _get_arc_obj(line)
+        
+        elif shape.type == 'MultiPolygon':
+            for polygon in shape.geoms:
+                rings = [polygon.exterior] + list(polygon.interiors)
+                for ring in rings:
+                    _get_arc_obj(ring)
+
+        else:
+            raise NotImplementedError("Can't do %s geometries" % shape.type)
+
+        return coordinates
+
+    def _geo_encode(self, f, shape):
         x_, y_ = 0, 0
 
         cmd= -1
@@ -80,24 +217,11 @@ class VectorTile:
         cur_x = 0
         cur_y = 0
 
-        f = self.layer.features.add()
-        self.feature_count += 1
-        f.id = self.feature_count
-        f.type = self.tile.Point if geom.isPoint else (self.tile.Polygon if geom.isPoly else self.tile.LineString)
-
-        self._handle_attr(self.layer, f, feature[1])
-
-        geom.parseGeometry(feature[0])
-        coordinates = []
-        points = self._chunker(geom.coordinates,2) # x,y corodinates grouped as one point. 
-        for i, coords in enumerate(points):
-            coordinates.append({
-                'x': coords[0], 
-                'y': coords[1],
-                'cmd': self._get_cmd_type(f.type, i, len(points))})
-        
         it = 0
         length = 0
+
+        geom_coordinates = self._parseGeometry(shape)
+        coordinates = self._process_points(f.type, geom_coordinates)
         
         while (True):
             if it >= len(coordinates):
@@ -163,71 +287,8 @@ class VectorTile:
         # at least one vertex + cmd/length
         if (skipped_last and skipped_index > 1): 
             # if we skipped previous vertex we just update it to the last one here.
-            handle_skipped_last(f, skipped_index, cur_x, cur_y, x_, y_)
-
+            self._handle_skipped_last(f, skipped_index, cur_x, cur_y, x_, y_)
+        
         # Update the last length/command value.
         if (cmd_idx >= 0):
             f.geometry.__setitem__(cmd_idx, self._encode_cmd_length(cmd, length))
-
-
-    # TODO: figure out if cmd can change within a feature geom
-    def _get_cmd_type(self, gtype, i, points):
-        cmd_type = -1
-        if gtype == self.tile.Point:
-            cmd_type = CMD_MOVE_TO
-        elif gtype == self.tile.Polygon or gtype == self.tile.LineString:
-            cmd_type = CMD_LINE_TO
-        if i==0:
-            cmd_type = CMD_MOVE_TO
-        if gtype == self.tile.Polygon and i+1==points:
-            cmd_type = CMD_SEG_END
-        return cmd_type
-
-    def _encode_cmd_length(self, cmd, length):
-        # cmd: 1 (MOVE_TO)
-        # cmd: 2 (LINE_TO)
-        # cmd: 7 (CLOSE_PATH)
-        return (length << cmd_bits) | (cmd & ((1 << cmd_bits) - 1))
-
-    def _chunker(self, seq, size):
-        return [seq[pos:pos + size] for pos in xrange(0, len(seq), size)]
-
-    def _handle_skipped_last(self, f, skipped_index, cur_x, cur_y, x_, y_):
-        last_x = f.geometry[skipped_index - 2]
-        last_y = f.geometry[skipped_index - 1]
-        last_dx = ((last_x >> 1) ^ (-(last_x & 1)))
-        last_dy = ((last_y >> 1) ^ (-(last_y & 1)))
-        dx = cur_x - x_ + last_dx
-        dy = cur_y - y_ + last_dy
-        x_ = cur_x
-        y_ = cur_y
-        f.geometry.__setitem__(skipped_index - 2, ((dx << 1) ^ (dx >> 31)))
-        f.geometry.__setitem__(skipped_index - 1, ((dy << 1) ^ (dy >> 31)))
-
-    def _handle_attr(self, layer, feature, props):
-        for k,v in props.items():
-            if k not in self.keys:
-                layer.keys.append(k)
-                self.keys.append(k)
-                idx = self.keys.index(k)
-                feature.tags.append(idx)
-            else:
-                idx = self.keys.index(k)
-                feature.tags.append(idx)
-            if v not in self.values:
-                if (isinstance(v,bool)):
-                    val = layer.values.add()
-                    val.bool_value = v
-                elif (isinstance(v,str)) or (isinstance(v,unicode)):
-                    val = layer.values.add()
-                    val.string_value = unicode(v,'utf8')
-                elif (isinstance(v,int)):
-                    val = layer.values.add()
-                    val.int_value = v
-                elif (isinstance(v,float)):
-                    val = layer.values.add()
-                    val.double_value = v
-                # else:
-                    # raise Exception("Unknown value type: '%s'" % type(v))
-            self.values.append(v)
-            feature.tags.append(self.values.index(v))
