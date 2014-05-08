@@ -80,19 +80,6 @@ class VectorTile:
         shape = loads(feature[0])
         f.type = self._get_feature_type(shape)
         self._geo_encode(f, shape)
-        
-
-    def _get_cmd_type(self, gtype, i, num_points):
-        cmd_type = -1
-        if gtype == self.tile.Point:
-            cmd_type = CMD_MOVE_TO
-        elif gtype == self.tile.Polygon or gtype == self.tile.LineString:
-            cmd_type = CMD_LINE_TO
-        if i==0:
-            cmd_type = CMD_MOVE_TO
-        if gtype == self.tile.Polygon and i+1==num_points:
-            cmd_type = CMD_SEG_END
-        return cmd_type
 
     def _get_feature_type(self, shape):
         if shape.type == 'Point' or shape.type == 'MultiPoint':
@@ -128,7 +115,7 @@ class VectorTile:
                         val.int_value = v
                     elif (isinstance(v,float)):
                         val = layer.values.add()
-                        val.double_value = v
+                        val.int_value = int(v) # this is a hack! TODO: Fix it
                     # else:
                     #     # do nothing because we know kind is sometimes <type NoneType>
                     #     logging.info("Unknown value type: '%s' for key: '%s'", type(v), k)
@@ -147,25 +134,34 @@ class VectorTile:
         f.geometry.__setitem__(skipped_index - 2, ((dx << 1) ^ (dx >> 31)))
         f.geometry.__setitem__(skipped_index - 1, ((dy << 1) ^ (dy >> 31)))
 
-    def _process_points(self, geom_type, geom_coordinates):
-        coordinates = []
-        points = self._chunker(geom_coordinates,2) # x,y coordinates grouped as one point. 
-        for i, coords in enumerate(points):
-            coordinates.append({
-                'x': coords[0], 
-                'y': coords[1],
-                'cmd': self._get_cmd_type(geom_type, i, len(points))})
-        return coordinates
-
     def _parseGeometry(self, shape):
         coordinates = []
+        line    = "line"
+        polygon = "polygon"
 
-        def _get_point_obj(x, y):
-            coordinates.append(x)
-            coordinates.append(self.extents - y)
+        def _get_point_obj(x, y, cmd=CMD_MOVE_TO):
+            coordinate = {
+                'x'  : x,
+                'y'  : self.extents - y,
+                'cmd': cmd 
+            }
+            coordinates.append(coordinate)
 
-        def _get_arc_obj(line):
-            [ _get_point_obj(x,y) for (x,y) in line.coords ]
+        def _get_arc_obj(arc, type):
+            length = len(arc.coords)
+            iterator=0
+            cmd = CMD_MOVE_TO
+            while (iterator < length):
+                x = arc.coords[iterator][0]
+                y = arc.coords[iterator][1]
+                if iterator == 0:
+                    cmd = CMD_MOVE_TO
+                elif iterator == length-1 and type == polygon:
+                    cmd = CMD_SEG_END
+                else:
+                    cmd = CMD_LINE_TO
+                _get_point_obj(x, y, cmd)
+                iterator = iterator + 1
 
         if shape.type == 'GeometryCollection':
             # do nothing
@@ -175,26 +171,26 @@ class VectorTile:
             _get_point_obj(shape.x,shape.y)
     
         elif shape.type == 'LineString':
-            _get_arc_obj(shape)
+            _get_arc_obj(shape, line)
     
         elif shape.type == 'Polygon':
             rings = [shape.exterior] + list(shape.interiors)
             for ring in rings:
-                _get_arc_obj(ring)
+                _get_arc_obj(ring, polygon)
         
         elif shape.type == 'MultiPoint':
             for point in shape.geoms:
                 _get_point_obj(point.x, point.y)
         
         elif shape.type == 'MultiLineString':
-            for line in shape.geoms:
-                _get_arc_obj(line)
+            for arc in shape.geoms:
+                _get_arc_obj(arc, line)
         
         elif shape.type == 'MultiPolygon':
             for polygon in shape.geoms:
                 rings = [polygon.exterior] + list(polygon.interiors)
                 for ring in rings:
-                    _get_arc_obj(ring)
+                    _get_arc_obj(ring, polygon)
 
         else:
             raise NotImplementedError("Can't do %s geometries" % shape.type)
@@ -217,8 +213,7 @@ class VectorTile:
         it = 0
         length = 0
 
-        geom_coordinates = self._parseGeometry(shape)
-        coordinates = self._process_points(f.type, geom_coordinates)
+        coordinates = self._parseGeometry(shape)
         
         while (True):
             if it >= len(coordinates):
