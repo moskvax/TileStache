@@ -3,6 +3,7 @@ from Mapbox import vector_tile_pb2
 from shapely.wkb import loads
 
 from math import floor, fabs
+from array import array
 
 from TileStache.Core import KnownUnknown
 import re
@@ -115,7 +116,10 @@ class VectorTile:
                         val.int_value = v
                     elif (isinstance(v,float)):
                         val = layer.values.add()
-                        val.int_value = int(v) # this is a hack! TODO: Fix it
+                        d_arr = array('d', [v])
+                        # google pbf expects big endian by default
+                        d_arr.byteswap() 
+                        val.double_value = d_arr[0]
                     # else:
                     #     # do nothing because we know kind is sometimes <type NoneType>
                     #     logging.info("Unknown value type: '%s' for key: '%s'", type(v), k)
