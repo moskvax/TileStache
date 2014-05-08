@@ -26,7 +26,7 @@ except ImportError, err:
     def connect(*args, **kwargs):
         raise err
 
-from . import mvt, geojson, topojson, oscimap
+from . import mvt, geojson, topojson, oscimap, mapbox
 from ...Geography import SphericalMercator
 from ModestMaps.Core import Point
 
@@ -159,7 +159,7 @@ class Provider:
         
         tolerance = self.simplify * tolerances[coord.zoom] if coord.zoom < self.simplify_until else None
 
-        return Response(self.dbinfo, self.srid, query, self.columns[query], bounds, tolerance, coord.zoom, self.clip, coord)
+        return Response(self.dbinfo, self.srid, query, self.columns[query], bounds, tolerance, coord.zoom, self.clip, coord, self.layer.name())
 
     def getTypeByExtension(self, extension):
         ''' Get mime-type and format by file extension, one of "mvt", "json" or "topojson".
@@ -175,6 +175,9 @@ class Provider:
 
         elif extension.lower() == 'vtm':
             return 'image/png', 'OpenScienceMap' # TODO: make this proper stream type, app only seems to work with png
+
+        elif extension.lower() == 'mapbox':
+            return 'image/png', 'Mapbox' 
 
         else:
             raise ValueError(extension + " is not a valid extension")
@@ -220,6 +223,9 @@ class MultiProvider:
         elif extension.lower() == 'vtm':
             return 'image/png', 'OpenScienceMap' # TODO: make this proper stream type, app only seems to work with png
         
+        elif extension.lower() == 'mapbox':
+            return 'image/png', 'Mapbox' 
+
         else:
             raise ValueError(extension + " is not a valid extension for responses with multiple layers")
 
@@ -242,7 +248,7 @@ class Connection:
 class Response:
     '''
     '''
-    def __init__(self, dbinfo, srid, subquery, columns, bounds, tolerance, zoom, clip, coord):
+    def __init__(self, dbinfo, srid, subquery, columns, bounds, tolerance, zoom, clip, coord, layer_name):
         ''' Create a new response object with Postgres connection info and a query.
         
             bounds argument is a 4-tuple with (xmin, ymin, xmax, ymax).
@@ -251,13 +257,15 @@ class Response:
         self.bounds = bounds
         self.zoom = zoom
         self.clip = clip
-        self.coord = coord
-
+        self.coord= coord
+        self.layer_name = layer_name
+        
         bbox = 'ST_MakeBox2D(ST_MakePoint(%.2f, %.2f), ST_MakePoint(%.2f, %.2f))' % bounds
         geo_query = build_query(srid, subquery, columns, bbox, tolerance, True, clip)
         merc_query = build_query(srid, subquery, columns, bbox, tolerance, False, clip)
         oscimap_query = build_query(srid, subquery, columns, bbox, tolerance, False, clip, oscimap.extents)
-        self.query = dict(TopoJSON=geo_query, JSON=geo_query, MVT=merc_query, OpenScienceMap=oscimap_query)
+        mapbox_query = build_query(srid, subquery, columns, bbox, tolerance, False, clip, mapbox.extents)
+        self.query = dict(TopoJSON=geo_query, JSON=geo_query, MVT=merc_query, OpenScienceMap=oscimap_query, Mapbox=mapbox_query)
 
     def save(self, out, format):
         '''
@@ -277,6 +285,9 @@ class Response:
 
         elif format == 'OpenScienceMap':
             oscimap.encode(out, features, self.coord)
+
+        elif format == 'Mapbox':
+            mapbox.encode(out, features, self.coord, self.layer_name)
 
         else:
             raise ValueError(format + " is not supported")
@@ -303,6 +314,9 @@ class EmptyResponse:
 
         elif format == 'OpenScienceMap':
             oscimap.encode(out, [], None)
+
+        elif format == 'Mapbox':
+            mapbox.encode(out, [], None)
 
         else:
             raise ValueError(format + " is not supported")
@@ -335,6 +349,16 @@ class MultiResponse:
                 features.extend(get_features(tile.dbinfo, tile.query["OpenScienceMap"]))
             oscimap.encode(out, features, self.coord)
         
+        elif format == 'Mapbox':
+            feature_layers = []
+            layers = [self.config.layers[name] for name in self.names]
+            for layer in layers:
+                width, height = layer.dim, layer.dim
+                tile = layer.provider.renderTile(width, height, layer.projection.srs, self.coord)
+                if isinstance(tile,EmptyResponse): continue
+                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["Mapbox"])})
+            mapbox.merge(out, feature_layers, self.coord)
+
         else:
             raise ValueError(format + " is not supported for responses with multiple layers")
 
