@@ -90,7 +90,6 @@ class VectorTile:
         layer = None
         # add layer tag
         tags.append(self.getTagId(('layer_name', this_layer)))
-
         for tag in row[1].iteritems():
             if tag[1] is None:
                 continue
@@ -102,7 +101,6 @@ class VectorTile:
                 continue
 
             tag = fixTag(tag, coord.zoom)
-            logging.info(tag)
 
             if tag is None:
                 continue
