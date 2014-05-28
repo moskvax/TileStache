@@ -30,7 +30,7 @@ from . import mvt, geojson, topojson, oscimap, mapbox
 from ...Geography import SphericalMercator
 from ModestMaps.Core import Point
 
-tolerances = [6378137 * 2 * pi / (2 ** (zoom + 8)) for zoom in range(20)]
+tolerances = [6378137 * 2 * pi / (2 ** (zoom + 8)) for zoom in range(22)]
 
 class Provider:
     ''' VecTiles provider for PostGIS data sources.
@@ -260,11 +260,10 @@ class Response:
         self.coord= coord
         self.layer_name = layer_name
         
-        bbox = 'ST_MakeBox2D(ST_MakePoint(%.2f, %.2f), ST_MakePoint(%.2f, %.2f))' % bounds
-        geo_query = build_query(srid, subquery, columns, bbox, tolerance, True, clip)
-        merc_query = build_query(srid, subquery, columns, bbox, tolerance, False, clip)
-        oscimap_query = build_query(srid, subquery, columns, bbox, tolerance, False, clip, oscimap.extents)
-        mapbox_query = build_query(srid, subquery, columns, bbox, tolerance, False, clip, mapbox.extents)
+        geo_query = build_query(srid, subquery, columns, bounds, tolerance, True, clip)
+        merc_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip)
+        oscimap_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, oscimap.padding * tolerances[coord.zoom], oscimap.extents)
+        mapbox_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, mapbox.padding * tolerances[coord.zoom], mapbox.extents)
         self.query = dict(TopoJSON=geo_query, JSON=geo_query, MVT=merc_query, OpenScienceMap=oscimap_query, Mapbox=mapbox_query)
 
     def save(self, out, format):
@@ -426,7 +425,7 @@ def get_features(dbinfo, query):
         
             wkb = bytes(row['__geometry__'])
             prop = dict([(k, v) for (k, v) in row.items()
-                         if k not in ('__geometry__', '__id__')])
+                         if (k not in ('__geometry__', '__id__') and v is not None)])
             
             if '__id__' in row:
                 features.append((wkb, prop, row['__id__']))
@@ -435,9 +434,10 @@ def get_features(dbinfo, query):
                 features.append((wkb, prop))
     return features
 
-def build_query(srid, subquery, subcolumns, bbox, tolerance, is_geo, is_clipped, scale=None):
+def build_query(srid, subquery, subcolumns, bounds, tolerance, is_geo, is_clipped, padding=0, scale=None):
     ''' Build and return an PostGIS query.
     '''
+    bbox = 'ST_MakeBox2D(ST_MakePoint(%.2f, %.2f), ST_MakePoint(%.2f, %.2f))' % (bounds[0] - padding, bounds[1] - padding, bounds[2] + padding, bounds[3] + padding)
     bbox = 'ST_SetSRID(%s, %d)' % (bbox, srid)
     geom = 'q.__geometry__'
     
@@ -450,9 +450,9 @@ def build_query(srid, subquery, subcolumns, bbox, tolerance, is_geo, is_clipped,
     if is_geo:
         geom = 'ST_Transform(%s, 4326)' % geom
 
-    # TODO: move this out of the query?
     if scale:
-        geom = 'ST_TransScale(%s, -ST_XMin(%s), -ST_YMin(%s), (%d / (ST_XMax(%s) - ST_XMin(%s))), (%d / (ST_YMax(%s) - ST_YMin(%s))))' % (geom, bbox, bbox, scale, bbox, bbox, scale, bbox, bbox)
+        # scale applies to the un-padded bounds, e.g. geometry in the padding area "spills over" past the scale range
+        geom = 'ST_TransScale(%s, %.2f, %.2f, (%.2f / (%.2f - %.2f)), (%.2f / (%.2f - %.2f)))' % (geom, -bounds[0], -bounds[1], scale, bounds[2], bounds[0], scale, bounds[3], bounds[1])
 
     subquery = subquery.replace('!bbox!', bbox)
     columns = ['q."%s"' % c for c in subcolumns if c not in ('__geometry__', )]
