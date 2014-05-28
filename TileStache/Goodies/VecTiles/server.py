@@ -283,7 +283,7 @@ class Response:
             topojson.encode(out, features, (ll.lon, ll.lat, ur.lon, ur.lat), self.clip)
 
         elif format == 'OpenScienceMap':
-            oscimap.encode(out, features, self.coord)
+            oscimap.encode(out, features, self.coord, self.layer_name)
 
         elif format == 'Mapbox':
             mapbox.encode(out, features, self.coord, self.layer_name)
@@ -339,14 +339,14 @@ class MultiResponse:
             geojson.merge(out, self.names, self.get_tiles(format), self.config, self.coord)
 
         elif format == 'OpenScienceMap':
-            features = []
+            feature_layers = []
             layers = [self.config.layers[name] for name in self.names]
             for layer in layers:
                 width, height = layer.dim, layer.dim
                 tile = layer.provider.renderTile(width, height, layer.projection.srs, self.coord)
                 if isinstance(tile,EmptyResponse): continue
-                features.extend(get_features(tile.dbinfo, tile.query["OpenScienceMap"]))
-            oscimap.encode(out, features, self.coord)
+                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["OpenScienceMap"])})
+            oscimap.merge(out, feature_layers, self.coord)
         
         elif format == 'Mapbox':
             feature_layers = []

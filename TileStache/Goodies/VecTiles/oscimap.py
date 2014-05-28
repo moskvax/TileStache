@@ -21,17 +21,33 @@ extents = 4096
 # tiles are padded by this number of pixels for the current zoom level (OSciMap uses this to cover up seams between tiles)
 padding = 5
 
-def encode(file, features, coord):
+def encode(file, features, coord, layer_name):
         tile = VectorTile(extents)
 
         for feature in features:
-            tile.addFeature(feature, coord)
+            tile.addFeature(feature, coord, layer_name)
 
         tile.complete()
 
         data = tile.out.SerializeToString()
         file.write(struct.pack(">I", len(data)))
         file.write(data)
+
+def merge(file, feature_layers, coord):
+    ''' Retrieve a list of OSciMap4 tile responses and merge them into one.
+    
+        get_tiles() retrieves data and performs basic integrity checks.
+    '''
+    tile = VectorTile(extents)
+
+    for layer in feature_layers:
+        tile.addFeatures(layer['features'], coord, layer['name'])
+
+    tile.complete()
+
+    data = tile.out.SerializeToString()
+    file.write(struct.pack(">I", len(data)))
+    file.write(data)
 
 class VectorTile:
     """
@@ -65,13 +81,18 @@ class VectorTile:
         if self.cur_val - attrib_offset > 0:
             self.out.num_vals = self.cur_val - attrib_offset
 
-    def addFeature(self, row, coord):
+    def addFeatures(self, features, coord, this_layer):
+        for feature in features:
+            self.addFeature(feature, coord, this_layer)
+
+    def addFeature(self, row, coord, this_layer):
         geom = self.geomencoder
         tags = []
 
         #height = None
         layer = None
-
+        # add layer tag
+        tags.append(self.getTagId(('layer_name', this_layer)))
         for tag in row[1].iteritems():
             if tag[1] is None:
                 continue
@@ -83,7 +104,6 @@ class VectorTile:
                 continue
 
             tag = fixTag(tag, coord.zoom)
-            logging.info(tag)
 
             if tag is None:
                 continue
