@@ -425,7 +425,7 @@ def get_features(dbinfo, query):
         
             wkb = bytes(row['__geometry__'])
             prop = dict([(k, v) for (k, v) in row.items()
-                         if k not in ('__geometry__', '__id__')])
+                         if (k not in ('__geometry__', '__id__') and v is not None)])
             
             if '__id__' in row:
                 features.append((wkb, prop, row['__id__']))
