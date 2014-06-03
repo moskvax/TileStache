@@ -5,7 +5,7 @@ import pkg_resources
 import sys
 
 
-version = open('VERSION', 'r').read().strip()
+version = open('TileStache/VERSION', 'r').read().strip()
 
 
 def is_installed(name):
@@ -45,5 +45,5 @@ setup(name='TileStache',
                 'TileStache.Goodies.VecTiles/Mapbox'],
       scripts=['scripts/tilestache-compose.py', 'scripts/tilestache-seed.py', 'scripts/tilestache-clean.py', 'scripts/tilestache-server.py', 'scripts/tilestache-render.py', 'scripts/tilestache-list.py'],
       data_files=[('share/tilestache', ['TileStache/Goodies/Providers/DejaVuSansMono-alphanumeric.ttf'])],
-      download_url='http://tilestache.org/download/TileStache-%(version)s.tar.gz' % locals(),
+      package_data={'TileStache': ['VERSION', '../doc/*.html']},
       license='BSD')
