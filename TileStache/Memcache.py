@@ -61,7 +61,7 @@ class Cache:
         self.key_prefix = key_prefix
 
         mc = Client(servers=servers, username=username, password=password, binary=binary)
-        mc.behaviors = {"ketama": True, "failure_limit": 2, "_retry_timeout": 30, "_auto_eject_hosts": True}
+        mc.behaviors = {"ketama": True, "failure_limit": 2, "_retry_timeout": 30, "auto_eject": True}
         self.mc_pool = ClientPool(mc, pool_size)
 
     def lock(self, layer, coord, format):
