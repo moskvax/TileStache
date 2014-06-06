@@ -60,7 +60,7 @@ class Cache:
         self.revision = revision
         self.key_prefix = key_prefix
 
-        mc = Client(servers=servers, username=username, password=password, binary=binary)
+        mc = Client(servers=servers, username=username, password=password, binary=binary, behaviors={"remove_failed": 4, "retry_timeout": 10})
         self.mc_pool = ClientPool(mc, pool_size)
 
     def lock(self, layer, coord, format):
