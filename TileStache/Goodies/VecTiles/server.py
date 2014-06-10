@@ -205,7 +205,11 @@ class MultiProvider:
     def __init__(self, layer, names):
         self.layer = layer
         self.names = names
-        
+    
+    def __call__(self, layer, names):
+        self.layer = layer
+        self.names = names
+
     def renderTile(self, width, height, srs, coord):
         ''' Render a single tile, return a Response instance.
         '''

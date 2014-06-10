@@ -48,6 +48,9 @@ import Config
 _pathinfo_pat = re.compile(r'^/?(?P<l>\w.+)/(?P<z>\d+)/(?P<x>-?\d+)/(?P<y>-?\d+)\.(?P<e>\w+)$')
 _preview_pat = re.compile(r'^/?(?P<l>\w.+)/(preview\.html)?$')
 
+# symbol used to separate layers when specifying more than one layer
+_delimiter = ','
+
 def getTile(layer, coord, extension, ignore_cached=False):
     ''' Get a type string and tile binary for a given request layer tile.
     
@@ -145,6 +148,19 @@ def mergePathInfo(layer, coord, extension):
     
     return '/%(layer)s/%(z)d/%(x)d/%(y)d.%(extension)s' % locals()
 
+def isValidLayer(layer, config):
+    if not layer:
+        return False
+    if (layer not in config.layers):
+        if (layer.find(_delimiter) != -1):
+            multi_providers = list(ll for ll in config.layers if hasattr(config.layers[ll].provider, 'names'))
+            for l in layer.split(_delimiter):
+                if ((l not in config.layers) or (l in multi_providers)):
+                    return False
+            return True
+        return False
+    return True
+
 def requestLayer(config, path_info):
     """ Return a Layer.
     
@@ -182,10 +198,15 @@ def requestLayer(config, path_info):
 
     layername = splitPathInfo(path_info)[0]
     
-    if layername not in config.layers:
+    if not isValidLayer(layername, config):
         raise Core.KnownUnknown(unknownLayerMessage(config, layername))
     
-    return config.layers[layername]
+    custom_layer = layername.find(_delimiter)!=-1
+
+    if custom_layer:
+        config.layers[config.custom_layer_name].provider(config.layers[config.custom_layer_name], **{'names': layername.split(_delimiter)})
+    
+    return config.layers[layername] if not custom_layer else config.layers[config.custom_layer_name]
 
 def requestHandler(config_hint, path_info, query_string=None):
     """ Generate a mime-type and response body for a given request.
@@ -377,7 +398,7 @@ class WSGITileServer:
         # WSGI behavior is different from CGI behavior, because we may not want
         # to return a chatty rummy for likely-deployed WSGI vs. testing CGI.
         #
-        if layer and layer not in self.config.layers:
+        if not isValidLayer(layer, self.config):
             return self._response(start_response, 404, str(unknownLayerMessage(self.config, layer)))
 
         path_info = environ.get('PATH_INFO', None)
