@@ -197,9 +197,11 @@ def requestLayer(config, path_info):
     custom_layer = layername.find(_delimiter)!=-1
 
     if custom_layer:
-        config.layers[config.custom_layer_name].provider(config.layers[config.custom_layer_name], **{'names': layername.split(_delimiter)})
-    
-    return config.layers[layername] if not custom_layer else config.layers[config.custom_layer_name]
+        config.layers[layername] = config.layers[config.custom_layer_name]
+        config.layers[layername].provider(config.layers[layername], **{'names': layername.split(_delimiter)})
+        del config.layers[config.custom_layer_name]
+
+    return config.layers[layername]
 
 def requestHandler(config_hint, path_info, query_string=None):
     """ Generate a mime-type and response body for a given request.
