@@ -32,7 +32,7 @@ def decode(file):
 def encode(file, features, coord, layer_name):
         tile = VectorTile(extents)
 
-        tile.addFeatures(features, coord, extents, layer_name)
+        tile.addFeatures(features, coord, layer_name)
 
         data = tile.tile.SerializeToString()
         file.write(data)
