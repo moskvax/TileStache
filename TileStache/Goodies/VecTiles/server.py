@@ -391,31 +391,15 @@ def query_columns(dbinfo, srid, subquery, bounds):
     ''' Get information about the columns returned for a subquery.
     '''
     with Connection(dbinfo) as db:
-        #
-        # While bounds covers less than the full planet, look for just one feature.
-        #
-        while (abs(bounds[2] - bounds[0]) * abs(bounds[2] - bounds[0])) < 1.61e15:
-            bbox = 'ST_MakeBox2D(ST_MakePoint(%f, %f), ST_MakePoint(%f, %f))' % bounds
-            bbox = 'ST_SetSRID(%s, %d)' % (bbox, srid)
-        
-            query = subquery.replace('!bbox!', bbox)
-        
-            db.execute(query + '\n LIMIT 1') # newline is important here, to break out of comments.
-            row = db.fetchone()
-            
-            if row is None:
-                #
-                # Try zooming out three levels (8x) to look for features.
-                #
-                bounds = (bounds[0] - (bounds[2] - bounds[0]) * 3.5,
-                          bounds[1] - (bounds[3] - bounds[1]) * 3.5,
-                          bounds[2] + (bounds[2] - bounds[0]) * 3.5,
-                          bounds[3] + (bounds[3] - bounds[1]) * 3.5)
-                
-                continue
-            
-            column_names = set(row.keys())
-            return column_names
+        bbox = 'ST_MakeBox2D(ST_MakePoint(%f, %f), ST_MakePoint(%f, %f))' % bounds
+        bbox = 'ST_SetSRID(%s, %d)' % (bbox, srid)
+
+        query = subquery.replace('!bbox!', bbox)
+
+        # newline is important here, to break out of comments.
+        db.execute(query + '\n LIMIT 0')
+        column_names = set(x.name for x in db.description)
+        return column_names
 
 def get_features(dbinfo, query):
     with Connection(dbinfo) as db:
