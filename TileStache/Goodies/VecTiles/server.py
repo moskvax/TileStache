@@ -76,7 +76,11 @@ class Provider:
           simplify_until:
             Optional integer specifying a zoom level where no more geometry
             simplification should occur. Default 16.
-        
+
+          suppress_simplification:
+            Optional list of zoom levels where no dynamic simplification should
+            occur.
+
         Sample configuration, for a layer with no results at zooms 0-9, basic
         selection of lines with names and highway tags for zoom 10, a remote
         URL containing a query for zoom 11, and a local file for zooms 12+:
@@ -104,7 +108,7 @@ class Provider:
             }
           }
     '''
-    def __init__(self, layer, dbinfo, queries, clip=True, srid=900913, simplify=1.0, simplify_until=16):
+    def __init__(self, layer, dbinfo, queries, clip=True, srid=900913, simplify=1.0, simplify_until=16, suppress_simplification=()):
         '''
         '''
         self.layer = layer
@@ -116,7 +120,8 @@ class Provider:
         self.srid = int(srid)
         self.simplify = float(simplify)
         self.simplify_until = int(simplify_until)
-        
+        self.suppress_simplification = set(suppress_simplification)
+
         self.queries = []
         self.columns = {}
         
@@ -157,7 +162,10 @@ class Provider:
         if query not in self.columns:
             self.columns[query] = query_columns(self.dbinfo, self.srid, query, bounds)
         
-        tolerance = self.simplify * tolerances[coord.zoom] if coord.zoom < self.simplify_until else None
+        if coord.zoom in self.suppress_simplification:
+            tolerance = None
+        else:
+            tolerance = self.simplify * tolerances[coord.zoom] if coord.zoom < self.simplify_until else None
 
         return Response(self.dbinfo, self.srid, query, self.columns[query], bounds, tolerance, coord.zoom, self.clip, coord, self.layer.name())
 
