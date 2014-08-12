@@ -21,7 +21,8 @@ extents = 4096
 # tiles are padded by this number of pixels for the current zoom level (OSciMap uses this to cover up seams between tiles)
 padding = 5
 
-def encode(file, features, coord, layer_name):
+def encode(file, features, coord, layer_name=''):
+        layer_name = layer_name or ''
         tile = VectorTile(extents)
 
         for feature in features:
