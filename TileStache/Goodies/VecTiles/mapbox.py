@@ -29,10 +29,10 @@ def decode(file):
     '''
     raise NotImplementedError('mapbox.decode() not yet written')
 
-def encode(file, features, coord, layer_name):
+def encode(file, features, coord, layer_name=''):
         tile = VectorTile(extents)
 
-        tile.addFeatures(features, coord, layer_name)
+        tile.addFeatures(features, coord, layer_name or '')
 
         data = tile.tile.SerializeToString()
         file.write(data)
