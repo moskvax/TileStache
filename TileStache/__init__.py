@@ -31,6 +31,10 @@ from time import time
 import httplib
 import logging
 
+from dateutil import parser
+from memcache import Client
+import hashlib
+
 try:
     from json import load as json_load
 except ImportError:
@@ -382,6 +386,9 @@ class WSGITileServer:
             self.config_path = None
             self.config = config
 
+        if str(self.config.cache.__class__) == "TileStache.Memcache.Cache":
+            self.mem = Client(self.config.cache.servers)
+
     def __call__(self, environ, start_response):
         """
         """
@@ -408,8 +415,30 @@ class WSGITileServer:
         script_name = environ.get('SCRIPT_NAME', None)
         
         status_code, headers, content = requestHandler2(self.config, path_info, query_string, script_name)
-        
-        return self._response(start_response, status_code, str(content), headers)
+
+        if not hasattr(self, "mem"):
+            return self._response(start_response, status_code, str(content), headers)
+
+        memcache_key = "conditional_caching." + path_info
+        cached_data = self.mem.get(memcache_key)
+
+        if cached_data and environ.get('HTTP_IF_NONE_MATCH') == cached_data['etag']:
+            start_response('%d %s' % (304, httplib.responses[304]), headers.items())
+            return [content]
+        elif cached_data and environ.has_key('HTTP_IF_MODIFIED_SINCE') and parser.parse(environ.get('HTTP_IF_MODIFIED_SINCE')) > parser.parse(cached_data['ts']):
+            start_response('%d %s' % (304, httplib.responses[304]), headers.items())
+            return [content]
+        else:
+            m = hashlib.md5()
+            m.update(str(content))
+            md5sum = m.hexdigest()
+            expires = datetime.utcnow() + timedelta(seconds=self.config.layers['all'].max_cache_age)
+            expires_formatted = expires.strftime('%a %d %b %Y %H:%M:%S GMT')
+            headers.setdefault('ETag', md5sum)
+            headers.setdefault('Last-Modified', expires_formatted)
+
+            self.mem.set(memcache_key, {'ts': expires_formatted, 'etag': md5sum})
+            return self._response(start_response, status_code, str(content), headers)
 
     def _response(self, start_response, code, content='', headers=None):
         """
