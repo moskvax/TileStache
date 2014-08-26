@@ -432,12 +432,11 @@ class WSGITileServer:
             m = hashlib.md5()
             m.update(str(content))
             md5sum = m.hexdigest()
-            expires = datetime.utcnow() + timedelta(seconds=self.config.layers['all'].max_cache_age)
-            expires_formatted = expires.strftime('%a %d %b %Y %H:%M:%S GMT')
             headers.setdefault('ETag', md5sum)
-            headers.setdefault('Last-Modified', expires_formatted)
+            last_modified = datetime.utcnow().strftime('%a %d %b %Y %H:%M:%S GMT')
+            headers.setdefault('Last-Modified', last_modified)
 
-            self.mem.set(memcache_key, {'ts': expires_formatted, 'etag': md5sum})
+            self.mem.set(memcache_key, {'ts': last_modified, 'etag': md5sum})
             return self._response(start_response, status_code, str(content), headers)
 
     def _response(self, start_response, code, content='', headers=None):
