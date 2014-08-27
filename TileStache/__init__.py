@@ -31,7 +31,6 @@ from time import time
 import httplib
 import logging
 
-from dateutil import parser
 from memcache import Client
 import hashlib
 
@@ -425,18 +424,13 @@ class WSGITileServer:
         if cached_data and environ.get('HTTP_IF_NONE_MATCH') == cached_data['etag']:
             start_response('%d %s' % (304, httplib.responses[304]), headers.items())
             return [content]
-        elif cached_data and environ.has_key('HTTP_IF_MODIFIED_SINCE') and parser.parse(environ.get('HTTP_IF_MODIFIED_SINCE')) > parser.parse(cached_data['ts']):
-            start_response('%d %s' % (304, httplib.responses[304]), headers.items())
-            return [content]
         else:
             m = hashlib.md5()
             m.update(str(content))
             md5sum = m.hexdigest()
             headers.setdefault('ETag', md5sum)
-            last_modified = datetime.utcnow().strftime('%a %d %b %Y %H:%M:%S GMT')
-            headers.setdefault('Last-Modified', last_modified)
 
-            self.mem.set(memcache_key, {'ts': last_modified, 'etag': md5sum})
+            self.mem.set(memcache_key, {'etag': md5sum})
             return self._response(start_response, status_code, str(content), headers)
 
     def _response(self, start_response, code, content='', headers=None):
