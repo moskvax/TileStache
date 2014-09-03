@@ -94,10 +94,19 @@ class VectorTile:
         layer = None
         # add layer tag
         tags.append(self.getTagId(('layer_name', this_layer)))
-        for tag in row[1].iteritems():
-            if tag[1] is None:
+        for k, v in row[1].iteritems():
+            if v is None:
                 continue
-            tag = (str(tag[0]), str(tag[1]))
+
+            # the vtm stylesheet expects the heights to be an integer,
+            # multiplied by 100
+            if this_layer == 'buildings' and k in ('height', 'min_height'):
+                try:
+                    v = int(v * 100)
+                except ValueError:
+                    logging.warning('vtm: Invalid %s value: %s' % (k, v))
+
+            tag = str(k), str(v)
 
             # use unsigned int for layer. i.e. map to 0..10
             if "layer" == tag[0]:
