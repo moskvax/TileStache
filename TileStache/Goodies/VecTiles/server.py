@@ -11,8 +11,10 @@ from math import pi
 from urlparse import urljoin, urlparse
 from urllib import urlopen
 from os.path import exists
+from shapely.wkb import loads
 
 import json
+import operator
 from ... import getTile
 from ...Core import KnownUnknown
 
@@ -76,7 +78,15 @@ class Provider:
           simplify_until:
             Optional integer specifying a zoom level where no more geometry
             simplification should occur. Default 16.
-        
+
+          suppress_simplification:
+            Optional list of zoom levels where no dynamic simplification should
+            occur.
+
+          geometry_types:
+            Optional list of geometry types that constrains the results of what
+            kind of features are returned.
+
         Sample configuration, for a layer with no results at zooms 0-9, basic
         selection of lines with names and highway tags for zoom 10, a remote
         URL containing a query for zoom 11, and a local file for zooms 12+:
@@ -104,7 +114,7 @@ class Provider:
             }
           }
     '''
-    def __init__(self, layer, dbinfo, queries, clip=True, srid=900913, simplify=1.0, simplify_until=16):
+    def __init__(self, layer, dbinfo, queries, clip=True, srid=900913, simplify=1.0, simplify_until=16, suppress_simplification=(), geometry_types=None):
         '''
         '''
         self.layer = layer
@@ -116,7 +126,9 @@ class Provider:
         self.srid = int(srid)
         self.simplify = float(simplify)
         self.simplify_until = int(simplify_until)
-        
+        self.suppress_simplification = set(suppress_simplification)
+        self.geometry_types = None if geometry_types is None else set(geometry_types)
+
         self.queries = []
         self.columns = {}
         
@@ -157,9 +169,12 @@ class Provider:
         if query not in self.columns:
             self.columns[query] = query_columns(self.dbinfo, self.srid, query, bounds)
         
-        tolerance = self.simplify * tolerances[coord.zoom] if coord.zoom < self.simplify_until else None
+        if coord.zoom in self.suppress_simplification:
+            tolerance = None
+        else:
+            tolerance = self.simplify * tolerances[coord.zoom] if coord.zoom < self.simplify_until else None
 
-        return Response(self.dbinfo, self.srid, query, self.columns[query], bounds, tolerance, coord.zoom, self.clip, coord, self.layer.name())
+        return Response(self.dbinfo, self.srid, query, self.columns[query], bounds, tolerance, coord.zoom, self.clip, coord, self.layer.name(), self.geometry_types)
 
     def getTypeByExtension(self, extension):
         ''' Get mime-type and format by file extension, one of "mvt", "json" or "topojson".
@@ -252,7 +267,7 @@ class Connection:
 class Response:
     '''
     '''
-    def __init__(self, dbinfo, srid, subquery, columns, bounds, tolerance, zoom, clip, coord, layer_name):
+    def __init__(self, dbinfo, srid, subquery, columns, bounds, tolerance, zoom, clip, coord, layer_name, geometry_types):
         ''' Create a new response object with Postgres connection info and a query.
         
             bounds argument is a 4-tuple with (xmin, ymin, xmax, ymax).
@@ -263,6 +278,7 @@ class Response:
         self.clip = clip
         self.coord= coord
         self.layer_name = layer_name
+        self.geometry_types = geometry_types
         
         geo_query = build_query(srid, subquery, columns, bounds, tolerance, True, clip)
         merc_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip)
@@ -273,7 +289,7 @@ class Response:
     def save(self, out, format):
         '''
         '''
-        features = get_features(self.dbinfo, self.query[format])
+        features = get_features(self.dbinfo, self.query[format], self.geometry_types)
 
         if format == 'MVT':
             mvt.encode(out, features)
@@ -333,6 +349,7 @@ class MultiResponse:
         self.config = config
         self.names = names
         self.coord = coord
+
     def save(self, out, format):
         '''
         '''
@@ -349,7 +366,7 @@ class MultiResponse:
                 width, height = layer.dim, layer.dim
                 tile = layer.provider.renderTile(width, height, layer.projection.srs, self.coord)
                 if isinstance(tile,EmptyResponse): continue
-                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["OpenScienceMap"])})
+                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["OpenScienceMap"], layer.provider.geometry_types)})
             oscimap.merge(out, feature_layers, self.coord)
         
         elif format == 'Mapbox':
@@ -359,7 +376,7 @@ class MultiResponse:
                 width, height = layer.dim, layer.dim
                 tile = layer.provider.renderTile(width, height, layer.projection.srs, self.coord)
                 if isinstance(tile,EmptyResponse): continue
-                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["Mapbox"])})
+                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["Mapbox"], layer.provider.geometry_types)})
             mapbox.merge(out, feature_layers, self.coord)
 
         else:
@@ -401,25 +418,31 @@ def query_columns(dbinfo, srid, subquery, bounds):
         column_names = set(x.name for x in db.description)
         return column_names
 
-def get_features(dbinfo, query):
+def get_features(dbinfo, query, geometry_types):
+    features = []
+
     with Connection(dbinfo) as db:
         db.execute(query)
-        
-        features = []
-        
         for row in db.fetchall():
-            if row['__geometry__'] is None:
-                continue
-        
-            wkb = bytes(row['__geometry__'])
-            prop = dict([(k, v) for (k, v) in row.items()
-                         if (k not in ('__geometry__', '__id__') and v is not None)])
-            
-            if '__id__' in row:
-                features.append((wkb, prop, row['__id__']))
-            
-            else:
-                features.append((wkb, prop))
+            assert '__geometry__' in row, 'Missing __geometry__ in feature result'
+            assert '__id__' in row, 'Missing __id__ in feature result'
+
+            wkb = bytes(row.pop('__geometry__'))
+            id = row.pop('__id__')
+
+            if geometry_types is not None:
+                shape = loads(wkb)
+                geom_type = shape.__geo_interface__['type']
+                if geom_type not in geometry_types:
+                    #print 'found %s which is not in: %s' % (geom_type, geometry_types)
+                    continue
+
+            props = dict((k, v) for k, v in row.items() if v is not None)
+            features.append((wkb, props, id))
+
+    # sort features by id to ensure stable ordering
+    features.sort(key=operator.itemgetter(2))
+
     return features
 
 def build_query(srid, subquery, subcolumns, bounds, tolerance, is_geo, is_clipped, padding=0, scale=None):
@@ -459,7 +482,5 @@ def build_query(srid, subquery, subcolumns, bounds, tolerance, is_geo, is_clippe
                 %(subquery)s
                 ) AS q
               WHERE ST_IsValid(q.__geometry__)
-                AND q.__geometry__ && %(bbox)s
-                AND ST_Intersects(q.__geometry__, %(bbox)s)
-                AND REPLACE(GeometryType(q.__geometry__), 'MULTI', '') = REPLACE(GeometryType(%(geom)s), 'MULTI', '')''' \
+                AND ST_Intersects(q.__geometry__, %(bbox)s)''' \
             % locals()
