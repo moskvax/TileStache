@@ -120,10 +120,7 @@ class VectorTile:
                         val.int_value = v
                     elif (isinstance(v,float)):
                         val = layer.values.add()
-                        d_arr = array('d', [v])
-                        # google pbf expects big endian by default
-                        d_arr.byteswap() 
-                        val.double_value = d_arr[0]
+                        val.double_value = v
                     # else:
                     #     # do nothing because we know kind is sometimes <type NoneType>
                     #     logging.info("Unknown value type: '%s' for key: '%s'", type(v), k)
