@@ -14,7 +14,6 @@ from os.path import exists
 from shapely.wkb import loads
 
 import json
-import operator
 from ... import getTile
 from ...Core import KnownUnknown
 
@@ -439,9 +438,6 @@ def get_features(dbinfo, query, geometry_types):
 
             props = dict((k, v) for k, v in row.items() if v is not None)
             features.append((wkb, props, id))
-
-    # sort features by id to ensure stable ordering
-    features.sort(key=operator.itemgetter(2))
 
     return features
 
