@@ -206,7 +206,6 @@ def requestLayer(config, path_info):
     if custom_layer:
         config.layers[layername] = config.layers[config.custom_layer_name]
         config.layers[layername].provider(config.layers[layername], **{'names': layername.split(_delimiter)})
-        del config.layers[config.custom_layer_name]
 
     return config.layers[layername]
 
