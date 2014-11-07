@@ -216,18 +216,20 @@ class MultiProvider:
             }
           }
     '''
-    def __init__(self, layer, names):
+    def __init__(self, layer, names, ignore_cached_sublayers=False):
         self.layer = layer
         self.names = names
+        self.ignore_cached_sublayers = ignore_cached_sublayers
     
-    def __call__(self, layer, names):
+    def __call__(self, layer, names, ignore_cached_sublayers=False):
         self.layer = layer
         self.names = names
+        self.ignore_cached_sublayers = ignore_cached_sublayers
 
     def renderTile(self, width, height, srs, coord):
         ''' Render a single tile, return a Response instance.
         '''
-        return MultiResponse(self.layer.config, self.names, coord)
+        return MultiResponse(self.layer.config, self.names, coord, self.ignore_cached_sublayers)
 
     def getTypeByExtension(self, extension):
         ''' Get mime-type and format by file extension, "json" or "topojson" only.
@@ -342,12 +344,13 @@ class EmptyResponse:
 class MultiResponse:
     '''
     '''
-    def __init__(self, config, names, coord):
+    def __init__(self, config, names, coord, ignore_cached_sublayers):
         ''' Create a new response object with TileStache config and layer names.
         '''
         self.config = config
         self.names = names
         self.coord = coord
+        self.ignore_cached_sublayers = ignore_cached_sublayers
 
     def save(self, out, format):
         '''
@@ -388,7 +391,7 @@ class MultiResponse:
             raise KnownUnknown("%s.get_tiles didn't recognize %s when trying to load %s." % (__name__, ', '.join(unknown_layers), ', '.join(self.names)))
         
         layers = [self.config.layers[name] for name in self.names]
-        mimes, bodies = zip(*[getTile(layer, self.coord, format.lower()) for layer in layers])
+        mimes, bodies = zip(*[getTile(layer, self.coord, format.lower(), self.ignore_cached_sublayers, self.ignore_cached_sublayers) for layer in layers])
         bad_mimes = [(name, mime) for (mime, name) in zip(mimes, self.names) if not mime.endswith('/json')]
         
         if bad_mimes:
