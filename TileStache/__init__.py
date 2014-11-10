@@ -204,10 +204,39 @@ def requestLayer(config, path_info):
     custom_layer = layername.find(_delimiter)!=-1
 
     if custom_layer:
-        config.layers[layername] = config.layers[config.custom_layer_name]
-        config.layers[layername].provider(config.layers[layername], **{'names': layername.split(_delimiter)})
+        # we can't just assign references, because we get identity problems
+        # when tilestache tries to look up the layer's name, which won't match
+        # the list of names in the provider
+        provider_names = layername.split(_delimiter)
+        custom_layer_obj = config.layers[config.custom_layer_name]
+        config.layers[layername] = clone_layer(custom_layer_obj, provider_names)
 
     return config.layers[layername]
+
+
+def clone_layer(layer, provider_names):
+    from TileStache.Core import Layer
+    copy = Layer(
+        layer.config,
+        layer.projection,
+        layer.metatile,
+        layer.stale_lock_timeout,
+        layer.cache_lifespan,
+        layer.write_cache,
+        layer.allowed_origin,
+        layer.max_cache_age,
+        layer.redirects,
+        layer.preview_lat,
+        layer.preview_lon,
+        layer.preview_zoom,
+        layer.preview_ext,
+        layer.bounds,
+        layer.dim,
+        )
+    copy.provider = layer.provider
+    copy.provider(copy, provider_names)
+    return copy
+
 
 def requestHandler(config_hint, path_info, query_string=None):
     """ Generate a mime-type and response body for a given request.
