@@ -191,7 +191,7 @@ class Provider:
             return 'image/png', 'OpenScienceMap' # TODO: make this proper stream type, app only seems to work with png
 
         elif extension.lower() == 'mapbox':
-            return 'image/png', 'Mapbox' 
+            return 'application/x-protobuf', 'Mapbox'
 
         else:
             raise ValueError(extension + " is not a valid extension")
@@ -242,7 +242,7 @@ class MultiProvider:
             return 'image/png', 'OpenScienceMap' # TODO: make this proper stream type, app only seems to work with png
         
         elif extension.lower() == 'mapbox':
-            return 'image/png', 'Mapbox' 
+            return 'application/x-protobuf', 'Mapbox'
 
         else:
             raise ValueError(extension + " is not a valid extension for responses with multiple layers")
