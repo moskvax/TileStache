@@ -37,17 +37,17 @@ def merge(file, feature_layers, coord):
     file.write(data)
 
 def get_feature_layer(name, features):
-    features_ = []
+    _features = []
 
     for feature in features:
         if len(feature) >= 2:
             feature[1].update(uid=feature[2])
-        features_.append({
+        _features.append({
             'geometry': feature[0],
             'properties': feature[1]
         })
 
     return {
         'name': name or '',
-        'features': features_
+        'features': _features
     }
