@@ -16,7 +16,7 @@ def is_installed(name):
         return False
 
 
-requires = ['ModestMaps >=1.3.0','simplejson', 'Werkzeug']
+requires = ['ModestMaps >=1.3.0','simplejson', 'Werkzeug', 'mapbox-vector-tile']
 
 # Soft dependency on PIL or Pillow
 if is_installed('Pillow') or sys.platform == 'win32':
