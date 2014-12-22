@@ -459,7 +459,10 @@ def build_query(srid, subquery, subcolumns, bounds, tolerance, is_geo, is_clippe
 
     if scale:
         # scale applies to the un-padded bounds, e.g. geometry in the padding area "spills over" past the scale range
-        geom = 'ST_TransScale(%s, %.2f, %.2f, (%.2f / (%.2f - %.2f)), (%.2f / (%.2f - %.2f)))' % (geom, -bounds[0], -bounds[1], scale, bounds[2], bounds[0], scale, bounds[3], bounds[1])
+        geom = ('ST_TransScale(%s, %s, %s, %s, %s)'
+                % (geom, -bounds[0], -bounds[1],
+                   scale / (bounds[2] - bounds[0]),
+                   scale / (bounds[3] - bounds[1])))
 
     subquery = subquery.replace('!bbox!', bbox)
     columns = ['q."%s"' % c for c in subcolumns if c not in ('__geometry__', )]
