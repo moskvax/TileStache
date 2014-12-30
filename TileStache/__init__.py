@@ -51,7 +51,7 @@ _preview_pat = re.compile(r'^/?(?P<l>\w.+)/(preview\.html)?$')
 # symbol used to separate layers when specifying more than one layer
 _delimiter = ','
 
-def getTile(layer, coord, extension, ignore_cached=False):
+def getTile(layer, coord, extension, ignore_cached=False, suppress_cache_write=False):
     ''' Get a type string and tile binary for a given request layer tile.
     
         This function is documented as part of TileStache's public API:
@@ -62,11 +62,12 @@ def getTile(layer, coord, extension, ignore_cached=False):
         - coord: one ModestMaps.Core.Coordinate corresponding to a single tile.
         - extension: filename extension to choose response type, e.g. "png" or "jpg".
         - ignore_cached: always re-render the tile, whether it's in the cache or not.
+        - suppress_cache_write: don't save the tile to the cache
     
         This is the main entry point, after site configuration has been loaded
         and individual tiles need to be rendered.
     '''
-    status_code, headers, body = layer.getTileResponse(coord, extension, ignore_cached)
+    status_code, headers, body = layer.getTileResponse(coord, extension, ignore_cached, suppress_cache_write)
     mime = headers.get('Content-Type')
 
     return mime, body

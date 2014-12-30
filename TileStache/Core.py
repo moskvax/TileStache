@@ -347,13 +347,14 @@ class Layer:
 
         return None
 
-    def getTileResponse(self, coord, extension, ignore_cached=False):
+    def getTileResponse(self, coord, extension, ignore_cached=False, suppress_cache_write=False):
         """ Get status code, headers, and a tile binary for a given request layer tile.
         
             Arguments:
             - coord: one ModestMaps.Core.Coordinate corresponding to a single tile.
             - extension: filename extension to choose response type, e.g. "png" or "jpg".
             - ignore_cached: always re-render the tile, whether it's in the cache or not.
+            - suppress_cache_write: don't save the tile to the cache
         
             This is the main entry point, after site configuration has been loaded
             and individual tiles need to be rendered.
@@ -393,7 +394,7 @@ class Layer:
             try:
                 lockCoord = None
 
-                if self.write_cache:
+                if (not suppress_cache_write) and self.write_cache:
                     # this is the coordinate that actually gets locked.
                     lockCoord = self.metatile.firstCoord(coord)
                     
@@ -417,9 +418,9 @@ class Layer:
                         tile = e.tile
                         save = False
 
-                    if not self.write_cache:
+                    if suppress_cache_write or (not self.write_cache):
                         save = False
-                    
+
                     if format.lower() == 'jpeg':
                         save_kwargs = self.jpeg_options
                     elif format.lower() == 'png':
