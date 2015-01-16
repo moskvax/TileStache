@@ -20,7 +20,7 @@ def encode(file, features, coord, layer_name=''):
 
     layers.append(get_feature_layer(layer_name, features))
     
-    data = mapbox_vector_tile.encode(layers, encode_floats_big_endian=False)
+    data = mapbox_vector_tile.encode(layers)
     file.write(data)
 
 def merge(file, feature_layers, coord):
@@ -33,7 +33,7 @@ def merge(file, feature_layers, coord):
     for layer in feature_layers:
         layers.append(get_feature_layer(layer['name'], layer['features']))
         
-    data = mapbox_vector_tile.encode(layers, encode_floats_big_endian=False)
+    data = mapbox_vector_tile.encode(layers)
     file.write(data)
 
 def get_feature_layer(name, features):
