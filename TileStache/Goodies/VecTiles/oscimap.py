@@ -127,7 +127,9 @@ class VectorTile:
         geom.parseGeometry(row[0])
         feature = None;
 
+        geometry_type = None
         if geom.isPoint:
+            geometry_type = 'Point'
             feature = self.out.points.add()
             # add number of points (for multi-point)
             if len(geom.coordinates) > 2:
@@ -140,8 +142,10 @@ class VectorTile:
                 return
 
             if geom.isPoly:
+                geometry_type = 'Polygon'
                 feature = self.out.polygons.add()
             else:
+                geometry_type = 'LineString'
                 feature = self.out.lines.add()
 
             # add coordinate index list (coordinates per geometry)
@@ -153,6 +157,10 @@ class VectorTile:
 
         # add coordinates
         feature.coordinates.extend(geom.coordinates)
+
+        # add geometry type to tags
+        geometry_type_tag = 'geometry_type', geometry_type
+        tags.append(self.getTagId(geometry_type_tag))
 
         # add tags
         feature.tags.extend(tags)
