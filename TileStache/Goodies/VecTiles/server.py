@@ -447,7 +447,7 @@ def get_features(dbinfo, query, geometry_types):
 def build_query(srid, subquery, subcolumns, bounds, tolerance, is_geo, is_clipped, padding=0, scale=None):
     ''' Build and return an PostGIS query.
     '''
-    bbox = 'ST_MakeBox2D(ST_MakePoint(%f, %f), ST_MakePoint(%f, %f))' % (bounds[0] - padding, bounds[1] - padding, bounds[2] + padding, bounds[3] + padding)
+    bbox = 'ST_MakeBox2D(ST_MakePoint(%.9f, %.9f), ST_MakePoint(%.9f, %.9f))' % (bounds[0] - padding, bounds[1] - padding, bounds[2] + padding, bounds[3] + padding)
     bbox = 'ST_SetSRID(%s, %d)' % (bbox, srid)
     geom = 'q.__geometry__'
     
@@ -455,14 +455,14 @@ def build_query(srid, subquery, subcolumns, bounds, tolerance, is_geo, is_clippe
         geom = 'ST_Intersection(%s, %s)' % (geom, bbox)
     
     if tolerance is not None:
-        geom = 'ST_SimplifyPreserveTopology(%s, %f)' % (geom, tolerance)
+        geom = 'ST_SimplifyPreserveTopology(%s, %.9f)' % (geom, tolerance)
     
     if is_geo:
         geom = 'ST_Transform(%s, 4326)' % geom
 
     if scale:
         # scale applies to the un-padded bounds, e.g. geometry in the padding area "spills over" past the scale range
-        geom = ('ST_TransScale(%s, %s, %s, %s, %s)'
+        geom = ('ST_TransScale(%s, %.9f, %.9f, %.9f, %.9f)'
                 % (geom, -bounds[0], -bounds[1],
                    scale / (bounds[2] - bounds[0]),
                    scale / (bounds[3] - bounds[1])))
