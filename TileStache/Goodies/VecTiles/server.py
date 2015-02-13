@@ -20,6 +20,7 @@ from ...Core import KnownUnknown
 try:
     from psycopg2.extras import RealDictCursor
     from psycopg2 import connect
+    from psycopg2.extensions import TransactionRollbackError
 
 except ImportError, err:
     # Still possible to build the documentation without psycopg2
@@ -420,11 +421,19 @@ def query_columns(dbinfo, srid, subquery, bounds):
         column_names = set(x.name for x in db.description)
         return column_names
 
-def get_features(dbinfo, query, geometry_types):
+def get_features(dbinfo, query, geometry_types, n_try=1):
     features = []
 
     with Connection(dbinfo) as db:
-        db.execute(query)
+        try:
+            db.execute(query)
+        except TransactionRollbackError:
+            if n_try >= 5:
+                print 'TransactionRollbackError occurred 5 times'
+                raise
+            else:
+                return get_features(dbinfo, query, geometry_types,
+                                    n_try=n_try + 1)
         for row in db.fetchall():
             assert '__geometry__' in row, 'Missing __geometry__ in feature result'
             assert '__id__' in row, 'Missing __id__ in feature result'
