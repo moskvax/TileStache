@@ -252,17 +252,19 @@ class MultiProvider:
 
 class Connection:
     ''' Context manager for Postgres connections.
-    
+
         See http://www.python.org/dev/peps/pep-0343/
         and http://effbot.org/zone/python-with-statement.htm
     '''
     def __init__(self, dbinfo):
         self.dbinfo = dbinfo
-    
+
     def __enter__(self):
-        self.db = connect(**self.dbinfo).cursor(cursor_factory=RealDictCursor)
+        conn = connect(**self.dbinfo)
+        conn.set_session(readonly=True, autocommit=True)
+        self.db = conn.cursor(cursor_factory=RealDictCursor)
         return self.db
-    
+
     def __exit__(self, type, value, traceback):
         self.db.connection.close()
 
