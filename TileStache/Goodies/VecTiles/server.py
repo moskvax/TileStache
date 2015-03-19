@@ -155,7 +155,7 @@ class Provider:
         self.simplify_until = int(simplify_until)
         self.suppress_simplification = set(suppress_simplification)
         self.geometry_types = None if geometry_types is None else set(geometry_types)
-        self.transform_fns = make_transform_fn(resolve_transform_fns(transform_fns))
+        self.transform_fn = make_transform_fn(resolve_transform_fns(transform_fns))
 
         self.queries = []
         self.columns = {}
@@ -202,7 +202,7 @@ class Provider:
         else:
             tolerance = self.simplify * tolerances[coord.zoom] if coord.zoom < self.simplify_until else None
 
-        return Response(self.dbinfo, self.srid, query, self.columns[query], bounds, tolerance, coord.zoom, self.clip, coord, self.layer.name(), self.geometry_types, self.transform_fns)
+        return Response(self.dbinfo, self.srid, query, self.columns[query], bounds, tolerance, coord.zoom, self.clip, coord, self.layer.name(), self.geometry_types, self.transform_fn)
 
     def getTypeByExtension(self, extension):
         ''' Get mime-type and format by file extension, one of "mvt", "json" or "topojson".
@@ -303,7 +303,7 @@ class Connection:
 class Response:
     '''
     '''
-    def __init__(self, dbinfo, srid, subquery, columns, bounds, tolerance, zoom, clip, coord, layer_name, geometry_types, transform_fns):
+    def __init__(self, dbinfo, srid, subquery, columns, bounds, tolerance, zoom, clip, coord, layer_name, geometry_types, transform_fn):
         ''' Create a new response object with Postgres connection info and a query.
 
             bounds argument is a 4-tuple with (xmin, ymin, xmax, ymax).
@@ -315,7 +315,7 @@ class Response:
         self.coord = coord
         self.layer_name = layer_name
         self.geometry_types = geometry_types
-        self.transform_fns = transform_fns
+        self.transform_fn = transform_fn
 
         geo_query = build_query(srid, subquery, columns, bounds, tolerance, True, clip)
         merc_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip)
@@ -326,7 +326,7 @@ class Response:
     def save(self, out, format):
         '''
         '''
-        features = get_features(self.dbinfo, self.query[format], self.geometry_types, self.transform_fns)
+        features = get_features(self.dbinfo, self.query[format], self.geometry_types, self.transform_fn)
 
         if format == 'MVT':
             mvt.encode(out, features)
@@ -404,7 +404,7 @@ class MultiResponse:
                 width, height = layer.dim, layer.dim
                 tile = layer.provider.renderTile(width, height, layer.projection.srs, self.coord)
                 if isinstance(tile,EmptyResponse): continue
-                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["OpenScienceMap"], layer.provider.geometry_types, layer.provider.transform_fns)})
+                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["OpenScienceMap"], layer.provider.geometry_types, layer.provider.transform_fn)})
             oscimap.merge(out, feature_layers, self.coord)
         
         elif format == 'Mapbox':
@@ -414,7 +414,7 @@ class MultiResponse:
                 width, height = layer.dim, layer.dim
                 tile = layer.provider.renderTile(width, height, layer.projection.srs, self.coord)
                 if isinstance(tile,EmptyResponse): continue
-                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["Mapbox"], layer.provider.geometry_types, layer.provider.transform_fns)})
+                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["Mapbox"], layer.provider.geometry_types, layer.provider.transform_fn)})
             mapbox.merge(out, feature_layers, self.coord)
 
         else:
