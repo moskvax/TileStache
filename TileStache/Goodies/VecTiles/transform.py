@@ -1,5 +1,7 @@
 # transformation functions to apply to features
 
+from shapely import wkb
+import md5
 import re
 
 
@@ -127,20 +129,17 @@ def _road_kind(properties):
 
 
 def normalize_osm_id(shape, properties, fid):
-    osm_id = properties.pop('osm_id', None)
-    if osm_id is None:
-        return shape, properties, fid
-    try:
-        int_osm_id = int(osm_id)
-    except ValueError:
-        return shape, properties, fid
+    if fid < 0:
+        properties['osm_id'] = -fid
+        properties['osm_relation'] = True
+        # preserve previous behavior and use the first 10 digits of
+        # the md5 sum for the id on negative ids
+        binary = wkb.dumps(shape)
+        fid = md5.new(binary).hexdigest()[:10]
     else:
-        if int_osm_id < 0:
-            properties['osm_id'] = -int_osm_id
-            properties['osm_relation'] = True
-        else:
-            properties['osm_id'] = int_osm_id
-        return shape, properties, fid
+        # always use a string id
+        fid = str(fid)
+    return shape, properties, fid
 
 
 def building_kind(shape, properties, fid):
