@@ -114,6 +114,10 @@ class Provider:
             consisting of the new shapely object, properties
             dictionary, and feature id for the feature.
 
+          sort_fn:
+            Optional function that will be used to sort features
+            fetched from the database.
+
         Sample configuration, for a layer with no results at zooms 0-9, basic
         selection of lines with names and highway tags for zoom 10, a remote
         URL containing a query for zoom 11, and a local file for zooms 12+:
@@ -141,7 +145,7 @@ class Provider:
             }
           }
     '''
-    def __init__(self, layer, dbinfo, queries, clip=True, srid=900913, simplify=1.0, simplify_until=16, suppress_simplification=(), geometry_types=None, transform_fns=None):
+    def __init__(self, layer, dbinfo, queries, clip=True, srid=900913, simplify=1.0, simplify_until=16, suppress_simplification=(), geometry_types=None, transform_fns=None, sort_fn=None):
         '''
         '''
         self.layer = layer
@@ -156,6 +160,7 @@ class Provider:
         self.suppress_simplification = set(suppress_simplification)
         self.geometry_types = None if geometry_types is None else set(geometry_types)
         self.transform_fn = make_transform_fn(resolve_transform_fns(transform_fns))
+        self.sort_fn = None if sort_fn is None else loadClassPath(sort_fn)
 
         self.queries = []
         self.columns = {}
@@ -202,7 +207,7 @@ class Provider:
         else:
             tolerance = self.simplify * tolerances[coord.zoom] if coord.zoom < self.simplify_until else None
 
-        return Response(self.dbinfo, self.srid, query, self.columns[query], bounds, tolerance, coord.zoom, self.clip, coord, self.layer.name(), self.geometry_types, self.transform_fn)
+        return Response(self.dbinfo, self.srid, query, self.columns[query], bounds, tolerance, coord.zoom, self.clip, coord, self.layer.name(), self.geometry_types, self.transform_fn, self.sort_fn)
 
     def getTypeByExtension(self, extension):
         ''' Get mime-type and format by file extension, one of "mvt", "json" or "topojson".
@@ -303,7 +308,7 @@ class Connection:
 class Response:
     '''
     '''
-    def __init__(self, dbinfo, srid, subquery, columns, bounds, tolerance, zoom, clip, coord, layer_name, geometry_types, transform_fn):
+    def __init__(self, dbinfo, srid, subquery, columns, bounds, tolerance, zoom, clip, coord, layer_name, geometry_types, transform_fn, sort_fn):
         ''' Create a new response object with Postgres connection info and a query.
 
             bounds argument is a 4-tuple with (xmin, ymin, xmax, ymax).
@@ -316,6 +321,7 @@ class Response:
         self.layer_name = layer_name
         self.geometry_types = geometry_types
         self.transform_fn = transform_fn
+        self.sort_fn = sort_fn
 
         geo_query = build_query(srid, subquery, columns, bounds, tolerance, True, clip)
         merc_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip)
@@ -326,7 +332,7 @@ class Response:
     def save(self, out, format):
         '''
         '''
-        features = get_features(self.dbinfo, self.query[format], self.geometry_types, self.transform_fn)
+        features = get_features(self.dbinfo, self.query[format], self.geometry_types, self.transform_fn, self.sort_fn)
 
         if format == 'MVT':
             mvt.encode(out, features)
@@ -404,7 +410,7 @@ class MultiResponse:
                 width, height = layer.dim, layer.dim
                 tile = layer.provider.renderTile(width, height, layer.projection.srs, self.coord)
                 if isinstance(tile,EmptyResponse): continue
-                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["OpenScienceMap"], layer.provider.geometry_types, layer.provider.transform_fn)})
+                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["OpenScienceMap"], layer.provider.geometry_types, layer.provider.transform_fn, layer.provider.sort_fn)})
             oscimap.merge(out, feature_layers, self.coord)
         
         elif format == 'Mapbox':
@@ -414,7 +420,7 @@ class MultiResponse:
                 width, height = layer.dim, layer.dim
                 tile = layer.provider.renderTile(width, height, layer.projection.srs, self.coord)
                 if isinstance(tile,EmptyResponse): continue
-                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["Mapbox"], layer.provider.geometry_types, layer.provider.transform_fn)})
+                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["Mapbox"], layer.provider.geometry_types, layer.provider.transform_fn, layer.provider.sort_fn)})
             mapbox.merge(out, feature_layers, self.coord)
 
         else:
@@ -456,7 +462,7 @@ def query_columns(dbinfo, srid, subquery, bounds):
         column_names = set(x.name for x in db.description)
         return column_names
 
-def get_features(dbinfo, query, geometry_types, transform_fn, n_try=1):
+def get_features(dbinfo, query, geometry_types, transform_fn, sort_fn, n_try=1):
     features = []
 
     with Connection(dbinfo) as db:
@@ -468,7 +474,7 @@ def get_features(dbinfo, query, geometry_types, transform_fn, n_try=1):
                 raise
             else:
                 return get_features(dbinfo, query, geometry_types,
-                                    transform_fn, n_try=n_try + 1)
+                                    transform_fn, sort_fn, n_try=n_try + 1)
         for row in db.fetchall():
             assert '__geometry__' in row, 'Missing __geometry__ in feature result'
             assert '__id__' in row, 'Missing __id__ in feature result'
@@ -489,6 +495,9 @@ def get_features(dbinfo, query, geometry_types, transform_fn, n_try=1):
                 wkb = dumps(shape)
 
             features.append((wkb, props, id))
+
+    if sort_fn:
+        features = sort_fn(features)
 
     return features
 
