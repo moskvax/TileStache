@@ -203,52 +203,52 @@ def road_classifier(shape, properties, fid):
 
 
 def road_sort_key(shape, properties, fid):
-    sort_val = 0
+    sort_val = 0.0
 
     layer = properties.get('layer')
     if layer:
         layer_float = _to_float(layer)
         if layer_float is not None:
-            sort_val += (layer_float * 1000)
+            sort_val += (layer_float * 1000.0)
 
     bridge = properties.get('bridge')
     if bridge in ('yes', 'true'):
-        sort_val += 100
+        sort_val += 100.0
 
     tunnel = properties.get('tunnel')
     if tunnel in ('yes', 'true'):
-        sort_val -= 100
+        sort_val -= 100.0
 
     highway = properties.get('highway', '')
     railway = properties.get('railway', '')
     aeroway = properties.get('aeroway', '')
 
     if highway == 'motorway':
-        sort_val += 0
+        sort_val += 0.0
     elif railway in ('rail', 'tram', 'light_rail', 'narrow_guage', 'monorail'):
         sort_val -= 0.5
     elif highway == 'trunk':
-        sort_val -= 1
+        sort_val -= 1.0
     elif highway == 'primary':
-        sort_val -= 2
+        sort_val -= 2.0
     elif highway == 'secondary':
-        sort_val -= 3
+        sort_val -= 3.0
     elif aeroway == 'runway':
-        sort_val -= 3
+        sort_val -= 3.0
     elif aeroway == 'taxiway':
         sort_val -= 3.5
     elif highway == 'tertiary':
-        sort_val -= 4
+        sort_val -= 4.0
     elif highway.endswith('_link'):
-        sort_val -= 5
+        sort_val -= 5.0
     elif highway in ('residential', 'unclassified', 'road'):
-        sort_val -= 6
+        sort_val -= 6.0
     elif highway in ('unclassified', 'service', 'minor'):
-        sort_val -= 7
+        sort_val -= 7.0
     elif railway == 'subway':
-        sort_val -= 8
+        sort_val -= 8.0
     else:
-        sort_val -= 9
+        sort_val -= 9.0
 
     properties['sort_key'] = sort_val
 
