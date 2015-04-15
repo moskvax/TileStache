@@ -203,52 +203,57 @@ def road_classifier(shape, properties, fid):
 
 
 def road_sort_key(shape, properties, fid):
+    # Calculated sort value is in the range 0 to 39
     sort_val = 0
 
-    layer = properties.get('layer')
-    if layer:
-        layer_float = _to_float(layer)
-        if layer_float is not None:
-            sort_val += (layer_float * 1000)
-
-    bridge = properties.get('bridge')
-    if bridge in ('yes', 'true'):
-        sort_val += 100
-
-    tunnel = properties.get('tunnel')
-    if tunnel in ('yes', 'true'):
-        sort_val -= 100
-
+    # Base layer range is 15 to 24
     highway = properties.get('highway', '')
     railway = properties.get('railway', '')
     aeroway = properties.get('aeroway', '')
 
     if highway == 'motorway':
-        sort_val += 0
+        sort_val += 24
     elif railway in ('rail', 'tram', 'light_rail', 'narrow_guage', 'monorail'):
-        sort_val -= 0.5
+        sort_val += 23
     elif highway == 'trunk':
-        sort_val -= 1
+        sort_val += 22
     elif highway == 'primary':
-        sort_val -= 2
-    elif highway == 'secondary':
-        sort_val -= 3
-    elif aeroway == 'runway':
-        sort_val -= 3
-    elif aeroway == 'taxiway':
-        sort_val -= 3.5
-    elif highway == 'tertiary':
-        sort_val -= 4
+        sort_val += 21
+    elif highway == 'secondary' or aeroway == 'runway':
+        sort_val += 20
+    elif highway == 'tertiary' or aeroway == 'taxiway':
+        sort_val += 19
     elif highway.endswith('_link'):
-        sort_val -= 5
+        sort_val += 18
     elif highway in ('residential', 'unclassified', 'road'):
-        sort_val -= 6
+        sort_val += 17
     elif highway in ('unclassified', 'service', 'minor'):
-        sort_val -= 7
-    elif railway == 'subway':
-        sort_val -= 8
+        sort_val += 16
     else:
-        sort_val -= 9
+        sort_val += 15
+
+    # Bridges and tunnels add +/- 10
+    bridge = properties.get('bridge')
+    tunnel = properties.get('tunnel')
+
+    if bridge in ('yes', 'true'):
+        sort_val += 10
+    elif tunnel in ('yes', 'true') or (railway == 'subway' and tunnel not in ('no', 'false')):
+        sort_val -= 10
+
+    # Explicit layer is clipped to [-5, 5] range
+    layer = properties.get('layer')
+
+    if layer:
+        layer_float = _to_float(layer)
+        if layer_float is not None:
+            layer_float = max(min(layer_float, 5), -5)
+            # Positive layer range is 20 to 24
+            if layer_float > 0
+                sort_val = layer_float + 34
+            # Negative layer range is -11 to -15
+            elif layer_float < 0
+                sort_val = layer_float + 5
 
     properties['sort_key'] = sort_val
 
