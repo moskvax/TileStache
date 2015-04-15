@@ -159,12 +159,18 @@ class Provider:
         self.simplify_until = int(simplify_until)
         self.suppress_simplification = set(suppress_simplification)
         self.geometry_types = None if geometry_types is None else set(geometry_types)
+        self.transform_fn_names = transform_fns
         self.transform_fn = make_transform_fn(resolve_transform_fns(transform_fns))
-        self.sort_fn = None if sort_fn is None else loadClassPath(sort_fn)
+        if sort_fn:
+            self.sort_fn_name = sort_fn
+            self.sort_fn = loadClassPath(sort_fn)
+        else:
+            self.sort_fn_name = None
+            self.sort_fn = None
 
         self.queries = []
         self.columns = {}
-        
+
         for query in queries:
             if query is None:
                 self.queries.append(None)
