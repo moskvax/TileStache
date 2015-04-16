@@ -249,10 +249,10 @@ def road_sort_key(shape, properties, fid):
         if layer_float is not None:
             layer_float = max(min(layer_float, 5), -5)
             # Positive layer range is 20 to 24
-            if layer_float > 0
+            if layer_float > 0:
                 sort_val = layer_float + 34
             # Negative layer range is -11 to -15
-            elif layer_float < 0
+            elif layer_float < 0:
                 sort_val = layer_float + 5
 
     properties['sort_key'] = sort_val
