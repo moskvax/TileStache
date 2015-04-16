@@ -137,6 +137,8 @@ def normalize_osm_id(shape, properties, fid):
         binary = wkb.dumps(shape)
         fid = md5.new(binary).hexdigest()[:10]
     else:
+        # always include an osm_id in the properties map
+        properties['osm_id'] = fid
         # always use a string id
         fid = str(fid)
     return shape, properties, fid
