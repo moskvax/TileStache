@@ -238,7 +238,8 @@ def road_sort_key(shape, properties, fid):
 
     if bridge in ('yes', 'true'):
         sort_val += 10
-    elif tunnel in ('yes', 'true') or (railway == 'subway' and tunnel not in ('no', 'false')):
+    elif (tunnel in ('yes', 'true') or
+          (railway == 'subway' and tunnel not in ('no', 'false'))):
         sort_val -= 10
 
     # Explicit layer is clipped to [-5, 5] range
