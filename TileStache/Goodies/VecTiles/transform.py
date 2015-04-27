@@ -225,7 +225,7 @@ def road_sort_key(shape, properties, fid):
         sort_val += 19
     elif highway.endswith('_link'):
         sort_val += 18
-    elif highway in ('residential', 'unclassified', 'road'):
+    elif highway in ('residential', 'unclassified', 'road', 'living_street'):
         sort_val += 17
     elif highway in ('unclassified', 'service', 'minor'):
         sort_val += 16
