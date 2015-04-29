@@ -42,7 +42,7 @@ def decode(file):
     
     return features
 
-def encode(file, features, zoom, is_clipped):
+def encode(file, features, zoom):
     ''' Encode a list of (WKB, property dict) features into a GeoJSON stream.
     
         Also accept three-element tuples as features: (WKB, property dict, id).
@@ -57,11 +57,7 @@ def encode(file, features, zoom, is_clipped):
     except ValueError:
         # Fall back to two-element features
         features = [dict(type='Feature', properties=p, geometry=loads(g).__geo_interface__) for (g, p) in features]
-    
-    if is_clipped:
-        for feature in features:
-            feature.update(dict(clipped=True))
-    
+
     geojson = dict(type='FeatureCollection', features=features)
 
     write_to_file(file, geojson, zoom)

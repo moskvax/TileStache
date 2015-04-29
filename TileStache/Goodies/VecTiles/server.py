@@ -344,12 +344,12 @@ class Response:
             mvt.encode(out, features)
         
         elif format == 'JSON':
-            geojson.encode(out, features, self.zoom, self.clip)
+            geojson.encode(out, features, self.zoom)
         
         elif format == 'TopoJSON':
             ll = SphericalMercator().projLocation(Point(*self.bounds[0:2]))
             ur = SphericalMercator().projLocation(Point(*self.bounds[2:4]))
-            topojson.encode(out, features, (ll.lon, ll.lat, ur.lon, ur.lat), self.clip)
+            topojson.encode(out, features, (ll.lon, ll.lat, ur.lon, ur.lat))
 
         elif format == 'OpenScienceMap':
             oscimap.encode(out, features, self.coord, self.layer_name)
@@ -373,12 +373,12 @@ class EmptyResponse:
             mvt.encode(out, [])
         
         elif format == 'JSON':
-            geojson.encode(out, [], 0, False)
+            geojson.encode(out, [], 0)
         
         elif format == 'TopoJSON':
             ll = SphericalMercator().projLocation(Point(*self.bounds[0:2]))
             ur = SphericalMercator().projLocation(Point(*self.bounds[2:4]))
-            topojson.encode(out, [], (ll.lon, ll.lat, ur.lon, ur.lat), False)
+            topojson.encode(out, [], (ll.lon, ll.lat, ur.lon, ur.lat))
 
         elif format == 'OpenScienceMap':
             oscimap.encode(out, [], None)
