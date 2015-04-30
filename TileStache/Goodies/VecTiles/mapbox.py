@@ -1,7 +1,3 @@
-from TileStache.Core import KnownUnknown
-import re
-import logging
-
 import mapbox_vector_tile
 
 # coordindates are scaled to this range within tile
@@ -40,11 +36,11 @@ def get_feature_layer(name, features):
     _features = []
 
     for feature in features:
-        if len(feature) >= 2:
-            feature[1].update(uid=feature[2])
+        wkb, props, fid = feature
         _features.append({
-            'geometry': feature[0],
-            'properties': feature[1]
+            'geometry': wkb,
+            'properties': props,
+            'id': fid,
         })
 
     return {

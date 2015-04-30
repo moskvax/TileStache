@@ -42,33 +42,31 @@ def decode(file):
     
     return features
 
-def encode(file, features, zoom, is_clipped):
-    ''' Encode a list of (WKB, property dict) features into a GeoJSON stream.
-    
-        Also accept three-element tuples as features: (WKB, property dict, id).
-    
+def encode(file, features, zoom):
+    ''' Encode a list of (WKB, property dict, id) features into a GeoJSON stream.
+
+        If no id is available, pass in None
+
         Geometries in the features list are assumed to be unprojected lon, lats.
         Floating point precision in the output is truncated to six digits.
     '''
-    try:
-        # Assume three-element features
-        features = [dict(type='Feature', properties=p, geometry=loads(g).__geo_interface__, id=i) for (g, p, i) in features]
+    fs = []
+    for feature in features:
+        assert len(feature) == 3
+        wkb, props, fid = feature
+        f = dict(type='Feature', properties=props,
+                 geometry=loads(wkb).__geo_interface__)
+        if fid is not None:
+            f['id'] = fid
+        fs.append(f)
 
-    except ValueError:
-        # Fall back to two-element features
-        features = [dict(type='Feature', properties=p, geometry=loads(g).__geo_interface__) for (g, p) in features]
-    
-    if is_clipped:
-        for feature in features:
-            feature.update(dict(clipped=True))
-    
-    geojson = dict(type='FeatureCollection', features=features)
+    geojson = dict(type='FeatureCollection', features=fs)
 
     write_to_file(file, geojson, zoom)
 
 def merge(file, names, tiles, config, coord):
     ''' Retrieve a list of GeoJSON tile responses and merge them into one.
-    
+
         get_tiles() retrieves data and performs basic integrity checks.
     '''
     output = dict(zip(names, tiles))
