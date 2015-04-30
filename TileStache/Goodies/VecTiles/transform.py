@@ -270,3 +270,23 @@ def road_sort_key(shape, properties, fid):
 def road_trim_properties(shape, properties, fid):
     properties = _remove_properties(properties, 'bridge', 'layer', 'tunnel')
     return shape, properties, fid
+
+
+def _reverse_line_direction(shape):
+    if shape.type != 'LineString':
+        return False
+    shape.coords = shape.coords[::-1]
+    return True
+
+
+def road_oneway(shape, properties, fid):
+    oneway = properties.get('oneway')
+    if oneway in ('-1', 'reverse'):
+        did_reverse = _reverse_line_direction(shape)
+        if did_reverse:
+            properties['oneway'] = 'yes'
+    elif oneway in ('true', '1'):
+        properties['oneway'] = 'yes'
+    elif oneway in ('false', '0'):
+        properties['oneway'] = 'no'
+    return shape, properties, fid
