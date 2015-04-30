@@ -71,29 +71,29 @@ def decode(file):
     raise NotImplementedError('topojson.decode() not yet written')
 
 def encode(file, features, bounds):
-    ''' Encode a list of (WKB, property dict) features into a TopoJSON stream.
-    
-        Also accept three-element tuples as features: (WKB, property dict, id).
-    
+    ''' Encode a list of (WKB, property dict, id) features into a TopoJSON stream.
+
+        If no id is available, pass in None
+
         Geometries in the features list are assumed to be unprojected lon, lats.
         Bounds are given in geographic coordinates as (xmin, ymin, xmax, ymax).
     '''
     transform, forward = get_transform(bounds)
     geometries, arcs = list(), list()
-    
+
     for feature in features:
-        shape = loads(feature[0])
-        geometry = dict(properties=feature[1])
+        wkb, props, fid = feature
+        shape = loads(wkb)
+        geometry = dict(properties=props)
         geometries.append(geometry)
 
-        if len(feature) >= 2:
-            # ID is an optional third element in the feature tuple
-            geometry.update(dict(id=feature[2]))
-        
+        if fid is not None:
+            geometry['id'] = fid
+
         if shape.type == 'GeometryCollection':
             geometries.pop()
             continue
-    
+
         elif shape.type == 'Point':
             geometry.update(dict(type='Point', coordinates=forward(shape.x, shape.y)))
     

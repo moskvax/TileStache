@@ -40,8 +40,6 @@ def get_feature_layer(name, features):
     _features = []
 
     for feature in features:
-        if len(feature) >= 2:
-            feature[1].update(uid=feature[2])
         _features.append({
             'geometry': feature[0],
             'properties': feature[1]
