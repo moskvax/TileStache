@@ -1,9 +1,7 @@
 ''' VecTiles implements client and server support for efficient vector tiles.
 
 VecTiles implements a TileStache Provider that returns tiles with contents
-simplified, precision reduced and often clipped. The MVT format in particular
-is designed for use in Mapnik with the VecTiles Datasource, which can read
-binary MVT tiles.
+simplified, precision reduced and often clipped.
 
 VecTiles generates tiles in two JSON formats, GeoJSON and TopoJSON.
 
