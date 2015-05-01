@@ -1,8 +1,7 @@
 ''' Provider that returns PostGIS vector tiles in GeoJSON or MVT format.
 
 VecTiles is intended for rendering, and returns tiles with contents simplified,
-precision reduced and often clipped. The MVT format in particular is designed
-for use in Mapnik with the VecTiles Datasource, which can read binary MVT tiles.
+precision reduced and often clipped.
 
 For a more general implementation, try the Vector provider:
     http://tilestache.org/doc/#vector-provider
@@ -30,7 +29,7 @@ except ImportError, err:
     def connect(*args, **kwargs):
         raise err
 
-from . import mvt, geojson, topojson, oscimap, mapbox
+from . import mvt, geojson, topojson, oscimap
 from ...Geography import SphericalMercator
 from ModestMaps.Core import Point
 
@@ -219,7 +218,7 @@ class Provider:
         ''' Get mime-type and format by file extension, one of "mvt", "json" or "topojson".
         '''
         if extension.lower() == 'mvt':
-            return 'application/octet-stream+mvt', 'MVT'
+            return 'application/x-protobuf', 'MVT'
         
         elif extension.lower() == 'json':
             return 'application/json', 'JSON'
@@ -229,9 +228,6 @@ class Provider:
 
         elif extension.lower() == 'vtm':
             return 'image/png', 'OpenScienceMap' # TODO: make this proper stream type, app only seems to work with png
-
-        elif extension.lower() == 'mapbox':
-            return 'application/x-protobuf', 'Mapbox'
 
         else:
             raise ValueError(extension + " is not a valid extension")
@@ -287,8 +283,8 @@ class MultiProvider:
         elif extension.lower() == 'vtm':
             return 'image/png', 'OpenScienceMap' # TODO: make this proper stream type, app only seems to work with png
         
-        elif extension.lower() == 'mapbox':
-            return 'application/x-protobuf', 'Mapbox'
+        elif extension.lower() == 'mvt':
+            return 'application/x-protobuf', 'MVT'
 
         else:
             raise ValueError(extension + " is not a valid extension for responses with multiple layers")
@@ -330,10 +326,9 @@ class Response:
         self.sort_fn = sort_fn
 
         geo_query = build_query(srid, subquery, columns, bounds, tolerance, True, clip)
-        merc_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip)
         oscimap_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, oscimap.padding * tolerances[coord.zoom], oscimap.extents)
-        mapbox_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, mapbox.padding * tolerances[coord.zoom], mapbox.extents)
-        self.query = dict(TopoJSON=geo_query, JSON=geo_query, MVT=merc_query, OpenScienceMap=oscimap_query, Mapbox=mapbox_query)
+        mvt_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, mvt.padding * tolerances[coord.zoom], mvt.extents)
+        self.query = dict(TopoJSON=geo_query, JSON=geo_query, MVT=mvt_query, OpenScienceMap=oscimap_query)
 
     def save(self, out, format):
         '''
@@ -341,7 +336,7 @@ class Response:
         features = get_features(self.dbinfo, self.query[format], self.geometry_types, self.transform_fn, self.sort_fn)
 
         if format == 'MVT':
-            mvt.encode(out, features)
+            mvt.encode(out, features, self.coord, self.layer_name)
         
         elif format == 'JSON':
             geojson.encode(out, features, self.zoom)
@@ -353,9 +348,6 @@ class Response:
 
         elif format == 'OpenScienceMap':
             oscimap.encode(out, features, self.coord, self.layer_name)
-
-        elif format == 'Mapbox':
-            mapbox.encode(out, features, self.coord, self.layer_name)
 
         else:
             raise ValueError(format + " is not supported")
@@ -370,7 +362,7 @@ class EmptyResponse:
         '''
         '''
         if format == 'MVT':
-            mvt.encode(out, [])
+            mvt.encode(out, [], None)
         
         elif format == 'JSON':
             geojson.encode(out, [], 0)
@@ -382,9 +374,6 @@ class EmptyResponse:
 
         elif format == 'OpenScienceMap':
             oscimap.encode(out, [], None)
-
-        elif format == 'Mapbox':
-            mapbox.encode(out, [], None)
 
         else:
             raise ValueError(format + " is not supported")
@@ -419,15 +408,15 @@ class MultiResponse:
                 feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["OpenScienceMap"], layer.provider.geometry_types, layer.provider.transform_fn, layer.provider.sort_fn)})
             oscimap.merge(out, feature_layers, self.coord)
         
-        elif format == 'Mapbox':
+        elif format == 'MVT':
             feature_layers = []
             layers = [self.config.layers[name] for name in self.names]
             for layer in layers:
                 width, height = layer.dim, layer.dim
                 tile = layer.provider.renderTile(width, height, layer.projection.srs, self.coord)
                 if isinstance(tile,EmptyResponse): continue
-                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["Mapbox"], layer.provider.geometry_types, layer.provider.transform_fn, layer.provider.sort_fn)})
-            mapbox.merge(out, feature_layers, self.coord)
+                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["MVT"], layer.provider.geometry_types, layer.provider.transform_fn, layer.provider.sort_fn)})
+            mvt.merge(out, feature_layers, self.coord)
 
         else:
             raise ValueError(format + " is not supported for responses with multiple layers")

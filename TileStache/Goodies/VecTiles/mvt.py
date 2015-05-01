@@ -1,91 +1,54 @@
-''' Implementation of MVT (Mapnik Vector Tiles) data format.
+import mapbox_vector_tile
 
-Mapnik's PythonDatasource.features() method can return a list of WKB features,
-pairs of WKB format geometry and dictionaries of key-value pairs that are
-rendered by Mapnik directly. PythonDatasource is new in Mapnik as of version
-2.1.0.
+# coordindates are scaled to this range within tile
+extents = 4096
 
-More information:
-    http://mapnik.org/docs/v2.1.0/api/python/mapnik.PythonDatasource-class.html
+# tiles are padded by this number of pixels for the current zoom level 
+padding = 0
 
-The MVT file format is a simple container for Mapnik-compatible vector tiles
-that minimizes the amount of conversion performed by the renderer, in contrast
-to other file formats such as GeoJSON.
-
-An MVT file starts with 8 bytes.
-
-    4 bytes "\\x89MVT"
-    uint32  Length of body
-    bytes   zlib-compressed body
-
-The following body is a zlib-compressed bytestream. When decompressed,
-it starts with four bytes indicating the total feature count.
-
-    uint32  Feature count
-    bytes   Stream of feature data
-
-Each feature has two parts, a raw WKB (well-known binary) representation of
-the geometry in spherical mercator and a JSON blob for feature properties.
-
-    uint32  Length of feature WKB
-    bytes   Raw bytes of WKB
-    uint32  Length of properties JSON
-    bytes   JSON dictionary of feature properties
-
-By default, encode() approximates the floating point precision of WKB geometry
-to 26 bits for a significant compression improvement and no visible impact on
-rendering at zoom 18 and lower.
-'''
-from StringIO import StringIO
-from zlib import decompress as _decompress, compress as _compress
-from struct import unpack as _unpack, pack as _pack
-import json
-
-from .wkb import approximate_wkb
 
 def decode(file):
-    ''' Decode an MVT file into a list of (WKB, property dict) features.
-    
-        Result can be passed directly to mapnik.PythonDatasource.wkb_features().
-    '''
-    head = file.read(4)
-    
-    if head != '\x89MVT':
-        raise Exception('Bad head: "%s"' % head)
-    
-    body = StringIO(_decompress(file.read(_next_int(file))))
-    features = []
-    
-    for i in range(_next_int(body)):
-        wkb = body.read(_next_int(body))
-        raw = body.read(_next_int(body))
+    tile = file.read()
+    data = mapbox_vector_tile.decode(tile)
+    return data # print data or write to file?
 
-        props = json.loads(raw)
-        features.append((wkb, props))
-    
-    return features
 
-def encode(file, features):
-    ''' Encode a list of (WKB, property dict) features into an MVT stream.
-    
-        Geometries in the features list are assumed to be in spherical mercator.
-        Floating point precision in the output is approximated to 26 bits.
+def encode(file, features, coord, layer_name=''):
+    layers = []
+
+    layers.append(get_feature_layer(layer_name, features))
+
+    data = mapbox_vector_tile.encode(layers)
+    file.write(data)
+
+
+def merge(file, feature_layers, coord):
     '''
-    parts = []
-    
+    Retrieve a list of mapbox vector tile responses and merge them into one.
+
+        get_tiles() retrieves data and performs basic integrity checks.
+    '''
+    layers = []
+
+    for layer in feature_layers:
+        layers.append(get_feature_layer(layer['name'], layer['features']))
+
+    data = mapbox_vector_tile.encode(layers)
+    file.write(data)
+
+
+def get_feature_layer(name, features):
+    _features = []
+
     for feature in features:
-        wkb = approximate_wkb(feature[0])
-        prop = json.dumps(feature[1])
-        
-        parts.extend([_pack('>I', len(wkb)), wkb, _pack('>I', len(prop)), prop])
-    
-    body = _compress(_pack('>I', len(features)) + ''.join(parts))
-    
-    file.write('\x89MVT')
-    file.write(_pack('>I', len(body)))
-    file.write(body)
+        wkb, props, fid = feature
+        _features.append({
+            'geometry': wkb,
+            'properties': props,
+            'id': fid,
+        })
 
-def _next_int(file):
-    ''' Read the next big-endian 4-byte unsigned int from a file.
-    '''
-    return _unpack('!I', file.read(4))[0]
+    return {
+        'name': name or '',
+        'features': _features
+    }
