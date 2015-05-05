@@ -8,15 +8,6 @@ def _sort_features_by_key(features, key):
     return features
 
 
-def _place_key(feature):
-    wkb, properties, fid = feature
-    admin_level = properties.get('admin_level')
-    admin_level_float = _to_float(admin_level)
-    if admin_level_float is None:
-        return 1000.0
-    return admin_level
-
-
 def _by_feature_id(feature):
     wkb, properties, fid = feature
     return fid
@@ -30,6 +21,26 @@ def _by_area(feature):
 def _sort_by_area_then_id(features):
     features.sort(key=_by_feature_id)
     features.sort(key=_by_area, reverse=True)
+    return features
+
+
+def _by_scalerank(feature):
+    wkb, properties, fid = feature
+    value_for_none = 1000
+    scalerank = properties.get('scalerank', value_for_none)
+    return scalerank
+
+
+def _by_population(feature):
+    wkb, properties, fid = feature
+    value_for_none = -1000
+    population = properties.get('population', value_for_none)
+    return population
+
+
+def _sort_by_scalerank_then_population(features):
+    features.sort(key=_by_population, reverse=True)
+    features.sort(key=_by_scalerank)
     return features
 
 
@@ -51,7 +62,7 @@ def landuse(features):
 
 
 def places(features):
-    return _sort_features_by_key(features, _place_key)
+    return _sort_by_scalerank_then_population(features)
 
 
 def pois(features):
