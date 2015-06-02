@@ -144,7 +144,7 @@ class Provider:
             }
           }
     '''
-    def __init__(self, layer, dbinfo, queries, clip=True, srid=900913, simplify=1.0, simplify_until=16, suppress_simplification=(), geometry_types=None, transform_fns=None, sort_fn=None):
+    def __init__(self, layer, dbinfo, queries, clip=True, srid=900913, simplify=1.0, simplify_until=16, suppress_simplification=(), geometry_types=None, transform_fns=None, sort_fn=None, simplify_before_intersect=False):
         '''
         '''
         self.layer = layer
@@ -166,6 +166,7 @@ class Provider:
         else:
             self.sort_fn_name = None
             self.sort_fn = None
+        self.simplify_before_intersect = simplify_before_intersect
 
         self.queries = []
         self.columns = {}
@@ -212,7 +213,7 @@ class Provider:
         else:
             tolerance = self.simplify * tolerances[coord.zoom] if coord.zoom < self.simplify_until else None
 
-        return Response(self.dbinfo, self.srid, query, self.columns[query], bounds, tolerance, coord.zoom, self.clip, coord, self.layer.name(), self.geometry_types, self.transform_fn, self.sort_fn)
+        return Response(self.dbinfo, self.srid, query, self.columns[query], bounds, tolerance, coord.zoom, self.clip, coord, self.layer.name(), self.geometry_types, self.transform_fn, self.sort_fn, self.simplify_before_intersect)
 
     def getTypeByExtension(self, extension):
         ''' Get mime-type and format by file extension, one of "mvt", "json" or "topojson".
@@ -310,7 +311,7 @@ class Connection:
 class Response:
     '''
     '''
-    def __init__(self, dbinfo, srid, subquery, columns, bounds, tolerance, zoom, clip, coord, layer_name, geometry_types, transform_fn, sort_fn):
+    def __init__(self, dbinfo, srid, subquery, columns, bounds, tolerance, zoom, clip, coord, layer_name, geometry_types, transform_fn, sort_fn, simplify_before_intersect):
         ''' Create a new response object with Postgres connection info and a query.
 
             bounds argument is a 4-tuple with (xmin, ymin, xmax, ymax).
@@ -325,9 +326,9 @@ class Response:
         self.transform_fn = transform_fn
         self.sort_fn = sort_fn
 
-        geo_query = build_query(srid, subquery, columns, bounds, tolerance, True, clip, layer_name=layer_name)
-        oscimap_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, oscimap.padding * tolerances[coord.zoom], oscimap.extents, layer_name=layer_name)
-        mvt_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, mvt.padding * tolerances[coord.zoom], mvt.extents, layer_name=layer_name)
+        geo_query = build_query(srid, subquery, columns, bounds, tolerance, True, clip, simplify_before_intersect=simplify_before_intersect)
+        oscimap_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, oscimap.padding * tolerances[coord.zoom], oscimap.extents, simplify_before_intersect=simplify_before_intersect)
+        mvt_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, mvt.padding * tolerances[coord.zoom], mvt.extents, simplify_before_intersect=simplify_before_intersect)
         self.query = dict(TopoJSON=geo_query, JSON=geo_query, MVT=mvt_query, OpenScienceMap=oscimap_query)
 
     def save(self, out, format):
@@ -496,7 +497,7 @@ def get_features(dbinfo, query, geometry_types, transform_fn, sort_fn, n_try=1):
 
     return features
 
-def build_query(srid, subquery, subcolumns, bounds, tolerance, is_geo, is_clipped, padding=0, scale=None, layer_name=None):
+def build_query(srid, subquery, subcolumns, bounds, tolerance, is_geo, is_clipped, padding=0, scale=None, simplify_before_intersect=False):
     ''' Build and return an PostGIS query.
     '''
 
@@ -505,26 +506,27 @@ def build_query(srid, subquery, subcolumns, bounds, tolerance, is_geo, is_clippe
     bbox = 'ST_SetSRID(%s, %d)' % (bbox, srid)
     geom = 'q.__geometry__'
     
-    # Special care must be taken when simplifying earth/water geometries
-    # to prevent tile border "seams" from forming: these occur when a
-    # geometry is split across multiple tiles (like a continuous strip
-    # of land or body of water) and thus, for any such tile, the part of that
-    # geometry inside of it lines up along one or more of its edges. If there's
-    # any kind of fine geometric detail near one of these edges, simplification
-    # might remove it in a way that makes the edge of the geometry move off the
-    # edge of the tile. See this example of a tile pre-simplification:
+    # Special care must be taken when simplifying certain geometries (like those
+    # in the earth/water layer) to prevent tile border "seams" from forming:
+    # these occur when a geometry is split across multiple tiles (like a
+    # continuous strip of land or body of water) and thus, for any such tile,
+    # the part of that geometry inside of it lines up along one or more of its
+    # edges. If there's any kind of fine geometric detail near one of these
+    # edges, simplification might remove it in a way that makes the edge of the
+    # geometry move off the edge of the tile. See this example of a tile
+    # pre-simplification:
     # https://cloud.githubusercontent.com/assets/4467604/7937704/aef971b4-090f-11e5-91b9-d973ef98e5ef.png
     # and post-simplification:
     # https://cloud.githubusercontent.com/assets/4467604/7937705/b1129dc2-090f-11e5-9341-6893a6892a36.png
     # at which point a seam formed.
     #
     # To get around this, for any given tile bounding box, we find the
-    # contained/overlapping earth/wate geometries and simplify them BEFORE
+    # contained/overlapping geometries and simplify them BEFORE
     # cutting out the precise tile bounding bbox (instead of cutting out the
     # tile and then simplifying everything inside of it, as we do with all of
     # the other layers).
 
-    if layer_name in ['earth', 'water']:
+    if simplify_before_intersect:
         # Simplify, then cut tile.
 
         if tolerance is not None:
