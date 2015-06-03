@@ -559,8 +559,9 @@ def build_query(srid, subquery, subcolumns, bounds, tolerance, is_geo, is_clippe
             geom = 'ST_MakeValid(ST_SimplifyPreserveTopology(%s, %.12f))' % (
                 geom, tolerance)
     
-        if is_clipped:
-            geom = 'ST_Intersection(%s, %s)' % (geom, bbox)
+        assert is_clipped, 'If simplify_before_intersect=True, ' \
+            'is_clipped should be True as well'
+        geom = 'ST_Intersection(%s, %s)' % (geom, bbox)
 
     else:
         # Cut tile, then simplify.
