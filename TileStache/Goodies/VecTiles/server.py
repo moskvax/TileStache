@@ -544,7 +544,7 @@ def build_query(srid, subquery, subcolumns, bounds, tolerance, is_geo, is_clippe
             # entire geometry (just the small bits lying right outside the
             # desired tile).
 
-            simplification_padding = (bounds[3] - bounds[1]) * 0.1
+            simplification_padding = padding + (bounds[3] - bounds[1]) * 0.1
             simplification_bbox = (
                 'ST_MakeBox2D(ST_MakePoint(%.12f, %.12f), '
                 'ST_MakePoint(%.12f, %.12f))' % (
