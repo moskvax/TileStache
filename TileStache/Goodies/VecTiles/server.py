@@ -144,7 +144,7 @@ class Provider:
             }
           }
     '''
-    def __init__(self, layer, dbinfo, queries, clip=True, srid=900913, simplify=1.0, simplify_until=16, suppress_simplification=(), geometry_types=None, transform_fns=None, sort_fn=None):
+    def __init__(self, layer, dbinfo, queries, clip=True, srid=900913, simplify=1.0, simplify_until=16, suppress_simplification=(), geometry_types=None, transform_fns=None, sort_fn=None, simplify_before_intersect=False):
         '''
         '''
         self.layer = layer
@@ -166,6 +166,7 @@ class Provider:
         else:
             self.sort_fn_name = None
             self.sort_fn = None
+        self.simplify_before_intersect = simplify_before_intersect
 
         self.queries = []
         self.columns = {}
@@ -212,7 +213,7 @@ class Provider:
         else:
             tolerance = self.simplify * tolerances[coord.zoom] if coord.zoom < self.simplify_until else None
 
-        return Response(self.dbinfo, self.srid, query, self.columns[query], bounds, tolerance, coord.zoom, self.clip, coord, self.layer.name(), self.geometry_types, self.transform_fn, self.sort_fn)
+        return Response(self.dbinfo, self.srid, query, self.columns[query], bounds, tolerance, coord.zoom, self.clip, coord, self.layer.name(), self.geometry_types, self.transform_fn, self.sort_fn, self.simplify_before_intersect)
 
     def getTypeByExtension(self, extension):
         ''' Get mime-type and format by file extension, one of "mvt", "json" or "topojson".
@@ -310,7 +311,7 @@ class Connection:
 class Response:
     '''
     '''
-    def __init__(self, dbinfo, srid, subquery, columns, bounds, tolerance, zoom, clip, coord, layer_name, geometry_types, transform_fn, sort_fn):
+    def __init__(self, dbinfo, srid, subquery, columns, bounds, tolerance, zoom, clip, coord, layer_name, geometry_types, transform_fn, sort_fn, simplify_before_intersect):
         ''' Create a new response object with Postgres connection info and a query.
 
             bounds argument is a 4-tuple with (xmin, ymin, xmax, ymax).
@@ -325,9 +326,9 @@ class Response:
         self.transform_fn = transform_fn
         self.sort_fn = sort_fn
 
-        geo_query = build_query(srid, subquery, columns, bounds, tolerance, True, clip)
-        oscimap_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, oscimap.padding * tolerances[coord.zoom], oscimap.extents)
-        mvt_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, mvt.padding * tolerances[coord.zoom], mvt.extents)
+        geo_query = build_query(srid, subquery, columns, bounds, tolerance, True, clip, simplify_before_intersect=simplify_before_intersect)
+        oscimap_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, oscimap.padding * tolerances[coord.zoom], oscimap.extents, simplify_before_intersect=simplify_before_intersect)
+        mvt_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, mvt.padding * tolerances[coord.zoom], mvt.extents, simplify_before_intersect=simplify_before_intersect)
         self.query = dict(TopoJSON=geo_query, JSON=geo_query, MVT=mvt_query, OpenScienceMap=oscimap_query)
 
     def save(self, out, format):
@@ -496,18 +497,80 @@ def get_features(dbinfo, query, geometry_types, transform_fn, sort_fn, n_try=1):
 
     return features
 
-def build_query(srid, subquery, subcolumns, bounds, tolerance, is_geo, is_clipped, padding=0, scale=None):
+def build_query(srid, subquery, subcolumns, bounds, tolerance, is_geo, is_clipped, padding=0, scale=None, simplify_before_intersect=False):
     ''' Build and return an PostGIS query.
     '''
+
+    # bounds argument is a 4-tuple with (xmin, ymin, xmax, ymax).
     bbox = 'ST_MakeBox2D(ST_MakePoint(%.12f, %.12f), ST_MakePoint(%.12f, %.12f))' % (bounds[0] - padding, bounds[1] - padding, bounds[2] + padding, bounds[3] + padding)
     bbox = 'ST_SetSRID(%s, %d)' % (bbox, srid)
     geom = 'q.__geometry__'
     
-    if is_clipped:
-        geom = 'ST_Intersection(%s, %s)' % (geom, bbox)
+    # Special care must be taken when simplifying certain geometries (like those
+    # in the earth/water layer) to prevent tile border "seams" from forming:
+    # these occur when a geometry is split across multiple tiles (like a
+    # continuous strip of land or body of water) and thus, for any such tile,
+    # the part of that geometry inside of it lines up along one or more of its
+    # edges. If there's any kind of fine geometric detail near one of these
+    # edges, simplification might remove it in a way that makes the edge of the
+    # geometry move off the edge of the tile. See this example of a tile
+    # pre-simplification:
+    # https://cloud.githubusercontent.com/assets/4467604/7937704/aef971b4-090f-11e5-91b9-d973ef98e5ef.png
+    # and post-simplification:
+    # https://cloud.githubusercontent.com/assets/4467604/7937705/b1129dc2-090f-11e5-9341-6893a6892a36.png
+    # at which point a seam formed.
+    #
+    # To get around this, for any given tile bounding box, we find the
+    # contained/overlapping geometries and simplify them BEFORE
+    # cutting out the precise tile bounding bbox (instead of cutting out the
+    # tile and then simplifying everything inside of it, as we do with all of
+    # the other layers).
+
+    if simplify_before_intersect:
+        # Simplify, then cut tile.
+
+        if tolerance is not None:
+            # The problem with simplifying all contained/overlapping geometries
+            # for a tile before cutting out the parts that actually lie inside
+            # of it is that we might end up simplifying a massive geometry just
+            # to extract a small portion of it (think simplifying the border of
+            # the US just to extract the New York City coastline). To reduce the
+            # performance hit, we actually identify all of the candidate
+            # geometries, then cut out a bounding box *slightly larger* than the
+            # tile bbox, THEN simplify, and only then cut out the tile itself.
+            # This still allows us to perform simplification of the geometry
+            # edges outside of the tile, which prevents any seams from forming
+            # when we cut it out, but means that we don't have to simplify the
+            # entire geometry (just the small bits lying right outside the
+            # desired tile).
+
+            simplification_padding = padding + (bounds[3] - bounds[1]) * 0.1
+            simplification_bbox = (
+                'ST_MakeBox2D(ST_MakePoint(%.12f, %.12f), '
+                'ST_MakePoint(%.12f, %.12f))' % (
+                    bounds[0] - simplification_padding,
+                    bounds[1] - simplification_padding,
+                    bounds[2] + simplification_padding,
+                    bounds[3] + simplification_padding))
+            simplification_bbox = 'ST_SetSrid(%s, %d)' % (
+                simplification_bbox, srid)
+
+            geom = 'ST_Intersection(%s, %s)' % (geom, simplification_bbox)
+            geom = 'ST_MakeValid(ST_SimplifyPreserveTopology(%s, %.12f))' % (
+                geom, tolerance)
     
-    if tolerance is not None:
-        geom = 'ST_SimplifyPreserveTopology(%s, %.12f)' % (geom, tolerance)
+        assert is_clipped, 'If simplify_before_intersect=True, ' \
+            'is_clipped should be True as well'
+        geom = 'ST_Intersection(%s, %s)' % (geom, bbox)
+
+    else:
+        # Cut tile, then simplify.
+
+        if is_clipped:
+            geom = 'ST_Intersection(%s, %s)' % (geom, bbox)
+
+        if tolerance is not None:
+            geom = 'ST_SimplifyPreserveTopology(%s, %.12f)' % (geom, tolerance)
     
     if is_geo:
         geom = 'ST_Transform(%s, 4326)' % geom
