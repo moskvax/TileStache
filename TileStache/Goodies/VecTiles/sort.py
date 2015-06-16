@@ -8,7 +8,7 @@ def _sort_features_by_key(features, key):
 
 def _by_feature_id(feature):
     wkb, properties, fid = feature
-    return fid
+    return properties.get('id')
 
 
 def _by_area(feature):
