@@ -290,3 +290,12 @@ def road_oneway(shape, properties, fid):
     elif oneway in ('false', '0'):
         properties['oneway'] = 'no'
     return shape, properties, fid
+
+
+def route_name(shape, properties, fid):
+    route_name = properties.get('route_name', '')
+    if route_name:
+        name = properties.get('name', '')
+        if route_name == name:
+            del properties['route_name']
+    return shape, properties, fid
