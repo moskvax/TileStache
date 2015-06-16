@@ -6,19 +6,19 @@ def _sort_features_by_key(features, key):
     return features
 
 
-def _by_feature_id(feature):
-    wkb, properties, fid = feature
-    return properties.get('id')
+def _by_feature_property(property_name):
+    def _feature_sort_by_property(feature):
+        wkb, properties, fid = feature
+        return properties.get(property_name)
+    return _feature_sort_by_property
 
 
-def _by_area(feature):
-    wkb, properties, fid = feature
-    return properties.get('area')
+_by_feature_id = _by_feature_property('id')
 
 
 def _sort_by_area_then_id(features):
     features.sort(key=_by_feature_id)
-    features.sort(key=_by_area, reverse=True)
+    features.sort(key=_by_feature_property('area'), reverse=True)
     return features
 
 
@@ -42,11 +42,6 @@ def _sort_by_scalerank_then_population(features):
     return features
 
 
-def _road_key(feature):
-    wkb, properties, fid = feature
-    return properties.get('sort_key')
-
-
 def buildings(features):
     return _sort_by_area_then_id(features)
 
@@ -68,7 +63,7 @@ def pois(features):
 
 
 def roads(features):
-    return _sort_features_by_key(features, _road_key)
+    return _sort_features_by_key(features, _by_feature_property('sort_key'))
 
 
 def water(features):
