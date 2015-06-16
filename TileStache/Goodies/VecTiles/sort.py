@@ -1,7 +1,5 @@
 # sort functions to apply to features
 
-from transform import _to_float
-
 
 def _sort_features_by_key(features, key):
     features.sort(key=key)
