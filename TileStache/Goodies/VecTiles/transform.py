@@ -1,6 +1,7 @@
 # transformation functions to apply to features
 
 from numbers import Number
+from StreetNames import short_street_name
 import re
 
 
@@ -289,4 +290,13 @@ def road_oneway(shape, properties, fid):
         properties['oneway'] = 'yes'
     elif oneway in ('false', '0'):
         properties['oneway'] = 'no'
+    return shape, properties, fid
+
+
+def road_abbreviate_name(shape, properties, fid):
+    name = properties.get('name', None)
+    if not name:
+        return shape, properties, fid
+    short_name = short_street_name(name)
+    properties['name'] = short_name
     return shape, properties, fid
