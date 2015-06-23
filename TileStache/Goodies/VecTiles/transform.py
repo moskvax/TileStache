@@ -190,11 +190,21 @@ def building_trim_properties(shape, properties, fid):
 
 
 def road_kind(shape, properties, fid):
+    source = properties.get('source')
+    assert source, 'Missing source in road query'
+    if source == 'naturalearthdata.com':
+        return shape, properties, fid
+
     properties['kind'] = _road_kind(properties)
     return shape, properties, fid
 
 
 def road_classifier(shape, properties, fid):
+    source = properties.get('source')
+    assert source, 'Missing source in road query'
+    if source == 'naturalearthdata.com':
+        return shape, properties, fid
+
     highway = properties.get('highway')
     tunnel = properties.get('tunnel')
     bridge = properties.get('bridge')
@@ -299,4 +309,13 @@ def road_abbreviate_name(shape, properties, fid):
         return shape, properties, fid
     short_name = short_street_name(name)
     properties['name'] = short_name
+    return shape, properties, fid
+
+
+def route_name(shape, properties, fid):
+    route_name = properties.get('route_name', '')
+    if route_name:
+        name = properties.get('name', '')
+        if route_name == name:
+            del properties['route_name']
     return shape, properties, fid
