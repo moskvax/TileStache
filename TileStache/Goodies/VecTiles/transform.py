@@ -319,3 +319,51 @@ def route_name(shape, properties, fid):
         if route_name == name:
             del properties['route_name']
     return shape, properties, fid
+
+
+def tags_create_dict(shape, properties, fid):
+    tags_hstore = properties.get('tags')
+    if tags_hstore:
+        tags = dict(tags_hstore)
+        properties['tags'] = tags
+    return shape, properties, fid
+
+
+def tags_remove(shape, properties, fid):
+    properties.pop('tags', None)
+    return shape, properties, fid
+
+
+tag_name_alternates = (
+    'int_name',
+    'loc_name',
+    'nat_name',
+    'official_name',
+    'old_name',
+    'reg_name',
+    'short_name',
+)
+
+
+def tags_name_i18n(shape, properties, fid):
+    tags = properties.get('tags')
+    if not tags:
+        return shape, properties, fid
+
+    name = properties.get('name')
+    if not name:
+        return shape, properties, fid
+
+    for k, v in tags.items():
+        if (k.startswith('name:') and v != name or
+                k.startswith('alt_name:') and v != name or
+                k.startswith('alt_name_') and v != name or
+                k.startswith('old_name:') and v != name):
+            properties[k] = v
+
+    for alt_tag_name_candidate in tag_name_alternates:
+        alt_tag_name_value = tags.get(alt_tag_name_candidate)
+        if alt_tag_name_value and alt_tag_name_value != name:
+            properties[alt_tag_name_candidate] = alt_tag_name_value
+
+    return shape, properties, fid
