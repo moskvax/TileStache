@@ -312,6 +312,19 @@ def road_abbreviate_name(shape, properties, fid):
     return shape, properties, fid
 
 
+def road_update_scalerank_type(shape, properties, fid):
+    # ne_10m_roads scalerank values where coming back as decimal.Decimal values
+    # the json formatter was breaking on these values, convert them to floats
+    source = properties.get('source')
+    assert source, 'Missing source in road query'
+    if source != 'naturalearthdata.com':
+        return shape, properties, fid
+    scalerank = properties.get('scalerank')
+    if scalerank is not None:
+        properties['scalerank'] = float(scalerank)
+    return shape, properties, fid
+
+
 def route_name(shape, properties, fid):
     route_name = properties.get('route_name', '')
     if route_name:
