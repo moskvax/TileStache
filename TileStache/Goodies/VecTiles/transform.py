@@ -1,6 +1,8 @@
 # transformation functions to apply to features
 
 from numbers import Number
+from StreetNames import short_street_name
+import decimal
 import re
 
 
@@ -189,11 +191,21 @@ def building_trim_properties(shape, properties, fid):
 
 
 def road_kind(shape, properties, fid):
+    source = properties.get('source')
+    assert source, 'Missing source in road query'
+    if source == 'naturalearthdata.com':
+        return shape, properties, fid
+
     properties['kind'] = _road_kind(properties)
     return shape, properties, fid
 
 
 def road_classifier(shape, properties, fid):
+    source = properties.get('source')
+    assert source, 'Missing source in road query'
+    if source == 'naturalearthdata.com':
+        return shape, properties, fid
+
     highway = properties.get('highway')
     tunnel = properties.get('tunnel')
     bridge = properties.get('bridge')
@@ -289,4 +301,79 @@ def road_oneway(shape, properties, fid):
         properties['oneway'] = 'yes'
     elif oneway in ('false', '0'):
         properties['oneway'] = 'no'
+    return shape, properties, fid
+
+
+def road_abbreviate_name(shape, properties, fid):
+    name = properties.get('name', None)
+    if not name:
+        return shape, properties, fid
+    short_name = short_street_name(name)
+    properties['name'] = short_name
+    return shape, properties, fid
+
+
+def route_name(shape, properties, fid):
+    route_name = properties.get('route_name', '')
+    if route_name:
+        name = properties.get('name', '')
+        if route_name == name:
+            del properties['route_name']
+    return shape, properties, fid
+
+
+def tags_create_dict(shape, properties, fid):
+    tags_hstore = properties.get('tags')
+    if tags_hstore:
+        tags = dict(tags_hstore)
+        properties['tags'] = tags
+    return shape, properties, fid
+
+
+def tags_remove(shape, properties, fid):
+    properties.pop('tags', None)
+    return shape, properties, fid
+
+
+tag_name_alternates = (
+    'int_name',
+    'loc_name',
+    'nat_name',
+    'official_name',
+    'old_name',
+    'reg_name',
+    'short_name',
+)
+
+
+def tags_name_i18n(shape, properties, fid):
+    tags = properties.get('tags')
+    if not tags:
+        return shape, properties, fid
+
+    name = properties.get('name')
+    if not name:
+        return shape, properties, fid
+
+    for k, v in tags.items():
+        if (k.startswith('name:') and v != name or
+                k.startswith('alt_name:') and v != name or
+                k.startswith('alt_name_') and v != name or
+                k.startswith('old_name:') and v != name):
+            properties[k] = v
+
+    for alt_tag_name_candidate in tag_name_alternates:
+        alt_tag_name_value = tags.get(alt_tag_name_candidate)
+        if alt_tag_name_value and alt_tag_name_value != name:
+            properties[alt_tag_name_candidate] = alt_tag_name_value
+
+    return shape, properties, fid
+
+
+def update_scalerank_type(shape, properties, fid):
+    # some ne datasets return back scalerank values as decimal.Decimal values
+    # convert these to floats to prevent encoders from breaking
+    scalerank = properties.get('scalerank')
+    if isinstance(scalerank, decimal.Decimal):
+        properties['scalerank'] = float(scalerank)
     return shape, properties, fid
