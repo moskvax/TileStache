@@ -368,12 +368,3 @@ def tags_name_i18n(shape, properties, fid):
             properties[alt_tag_name_candidate] = alt_tag_name_value
 
     return shape, properties, fid
-
-
-def update_scalerank_type(shape, properties, fid):
-    # some ne datasets return back scalerank values as decimal.Decimal values
-    # convert these to floats to prevent encoders from breaking
-    scalerank = properties.get('scalerank')
-    if isinstance(scalerank, decimal.Decimal):
-        properties['scalerank'] = float(scalerank)
-    return shape, properties, fid
