@@ -42,33 +42,33 @@ def _sort_by_scalerank_then_population(features):
     return features
 
 
-def buildings(features):
+def buildings(features, zoom):
     return _sort_by_area_then_id(features)
 
 
-def earth(features):
+def earth(features, zoom):
     return _sort_features_by_key(features, _by_feature_id)
 
 
-def landuse(features):
+def landuse(features, zoom):
     return _sort_by_area_then_id(features)
 
 
-def places(features):
+def places(features, zoom):
     return _sort_by_scalerank_then_population(features)
 
 
-def pois(features):
+def pois(features, zoom):
     return _sort_features_by_key(features, _by_feature_id)
 
 
-def roads(features):
+def roads(features, zoom):
     return _sort_features_by_key(features, _by_feature_property('sort_key'))
 
 
-def water(features):
+def water(features, zoom):
     return _sort_by_area_then_id(features)
 
 
-def transit(features):
+def transit(features, zoom):
     return _sort_features_by_key(features, _by_feature_id)
