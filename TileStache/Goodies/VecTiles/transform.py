@@ -258,21 +258,22 @@ def road_sort_key(shape, properties, fid, zoom):
           (railway == 'subway' and tunnel not in ('no', 'false'))):
         sort_val -= 10
 
-    # Explicit layer is clipped to [-5, 5] range
-    layer = properties.get('layer')
-
-    if layer:
-        layer_float = _to_float(layer)
-        if layer_float is not None:
-            layer_float = max(min(layer_float, 5), -5)
-            # The range of values from above is [5, 34]
-            # For positive layer values, we want the range to be:
-            # [34, 39]
-            if layer_float > 0:
-                sort_val = int(layer_float + 34)
-            # For negative layer values, [0, 5]
-            elif layer_float < 0:
-                sort_val = int(layer_float + 5)
+    # Only apply layer logic for zooms >= 15
+    if zoom >= 15:
+        # Explicit layer is clipped to [-5, 5] range
+        layer = properties.get('layer')
+        if layer:
+            layer_float = _to_float(layer)
+            if layer_float is not None:
+                layer_float = max(min(layer_float, 5), -5)
+                # The range of values from above is [5, 34]
+                # For positive layer values, we want the range to be:
+                # [34, 39]
+                if layer_float > 0:
+                    sort_val = int(layer_float + 34)
+                # For negative layer values, [0, 5]
+                elif layer_float < 0:
+                    sort_val = int(layer_float + 5)
 
     properties['sort_key'] = sort_val
 
