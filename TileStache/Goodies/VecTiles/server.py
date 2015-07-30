@@ -327,8 +327,10 @@ class Response:
         self.sort_fn = sort_fn
 
         geo_query = build_query(srid, subquery, columns, bounds, tolerance, True, clip, simplify_before_intersect=simplify_before_intersect)
-        oscimap_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, oscimap.padding * tolerances[coord.zoom], oscimap.extents, simplify_before_intersect=simplify_before_intersect)
-        mvt_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, mvt.padding * tolerances[coord.zoom], mvt.extents, simplify_before_intersect=simplify_before_intersect)
+        tol_idx = coord.zoom if 0 <= coord.zoom < len(tolerances) else -1
+        tol_val = tolerances[tol_idx]
+        oscimap_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, oscimap.padding * tol_val, oscimap.extents, simplify_before_intersect=simplify_before_intersect)
+        mvt_query = build_query(srid, subquery, columns, bounds, tolerance, False, clip, mvt.padding * tol_val, mvt.extents, simplify_before_intersect=simplify_before_intersect)
         self.query = dict(TopoJSON=geo_query, JSON=geo_query, MVT=mvt_query, OpenScienceMap=oscimap_query)
 
     def save(self, out, format):

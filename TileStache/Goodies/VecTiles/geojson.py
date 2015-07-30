@@ -78,8 +78,9 @@ def write_to_file(file, geojson, zoom):
     '''
     encoder = json.JSONEncoder(separators=(',', ':'))
     encoded = encoder.iterencode(geojson)
-    flt_fmt = '%%.%df' % precisions[zoom]
-    
+    precision_idx = zoom if 0 <= zoom < len(precisions) else -1
+    flt_fmt = '%%.%df' % precisions[precision_idx]
+
     for token in encoded:
         if charfloat_pat.match(token):
             # in python 2.7, we see a character followed by a float literal
