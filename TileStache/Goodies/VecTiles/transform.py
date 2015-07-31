@@ -248,18 +248,16 @@ def road_sort_key(shape, properties, fid, zoom):
     else:
         sort_val += 15
 
-    # Bridges and tunnels add +/- 10
-    bridge = properties.get('bridge')
-    tunnel = properties.get('tunnel')
-
-    if bridge in ('yes', 'true'):
-        sort_val += 10
-    elif (tunnel in ('yes', 'true') or
-          (railway == 'subway' and tunnel not in ('no', 'false'))):
-        sort_val -= 10
-
-    # Only apply layer logic for zooms >= 15
     if zoom >= 15:
+        # Bridges and tunnels add +/- 10
+        bridge = properties.get('bridge')
+        tunnel = properties.get('tunnel')
+        if bridge in ('yes', 'true'):
+            sort_val += 10
+        elif (tunnel in ('yes', 'true') or
+              (railway == 'subway' and tunnel not in ('no', 'false'))):
+            sort_val -= 10
+
         # Explicit layer is clipped to [-5, 5] range
         layer = properties.get('layer')
         if layer:
