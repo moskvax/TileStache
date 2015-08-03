@@ -129,12 +129,12 @@ def _road_kind(properties):
     return 'minor_road'
 
 
-def add_id_to_properties(shape, properties, fid):
+def add_id_to_properties(shape, properties, fid, zoom):
     properties['id'] = fid
     return shape, properties, fid
 
 
-def detect_osm_relation(shape, properties, fid):
+def detect_osm_relation(shape, properties, fid, zoom):
     # Assume all negative ids indicate the data was a relation. At the
     # moment, this is true because only osm contains negative
     # identifiers. Should this change, this logic would need to become
@@ -144,11 +144,11 @@ def detect_osm_relation(shape, properties, fid):
     return shape, properties, fid
 
 
-def remove_feature_id(shape, properties, fid):
+def remove_feature_id(shape, properties, fid, zoom):
     return shape, properties, None
 
 
-def building_kind(shape, properties, fid):
+def building_kind(shape, properties, fid, zoom):
     building = _coalesce(properties, 'building:part', 'building')
     if building and building != 'yes':
         kind = building
@@ -159,7 +159,7 @@ def building_kind(shape, properties, fid):
     return shape, properties, fid
 
 
-def building_height(shape, properties, fid):
+def building_height(shape, properties, fid, zoom):
     height = _building_calc_height(
         properties.get('height'), properties.get('building:levels'),
         _building_calc_levels)
@@ -170,7 +170,7 @@ def building_height(shape, properties, fid):
     return shape, properties, fid
 
 
-def building_min_height(shape, properties, fid):
+def building_min_height(shape, properties, fid, zoom):
     min_height = _building_calc_height(
         properties.get('min_height'), properties.get('building:min_levels'),
         _building_calc_min_levels)
@@ -181,7 +181,7 @@ def building_min_height(shape, properties, fid):
     return shape, properties, fid
 
 
-def building_trim_properties(shape, properties, fid):
+def building_trim_properties(shape, properties, fid, zoom):
     properties = _remove_properties(
         properties,
         'amenity', 'shop', 'tourism',
@@ -190,7 +190,7 @@ def building_trim_properties(shape, properties, fid):
     return shape, properties, fid
 
 
-def road_kind(shape, properties, fid):
+def road_kind(shape, properties, fid, zoom):
     source = properties.get('source')
     assert source, 'Missing source in road query'
     if source == 'naturalearthdata.com':
@@ -200,7 +200,7 @@ def road_kind(shape, properties, fid):
     return shape, properties, fid
 
 
-def road_classifier(shape, properties, fid):
+def road_classifier(shape, properties, fid, zoom):
     source = properties.get('source')
     assert source, 'Missing source in road query'
     if source == 'naturalearthdata.com':
@@ -218,7 +218,7 @@ def road_classifier(shape, properties, fid):
     return shape, properties, fid
 
 
-def road_sort_key(shape, properties, fid):
+def road_sort_key(shape, properties, fid, zoom):
     # Calculated sort value is in the range 0 to 39
     sort_val = 0
 
@@ -248,38 +248,37 @@ def road_sort_key(shape, properties, fid):
     else:
         sort_val += 15
 
-    # Bridges and tunnels add +/- 10
-    bridge = properties.get('bridge')
-    tunnel = properties.get('tunnel')
+    if zoom >= 15:
+        # Bridges and tunnels add +/- 10
+        bridge = properties.get('bridge')
+        tunnel = properties.get('tunnel')
+        if bridge in ('yes', 'true'):
+            sort_val += 10
+        elif (tunnel in ('yes', 'true') or
+              (railway == 'subway' and tunnel not in ('no', 'false'))):
+            sort_val -= 10
 
-    if bridge in ('yes', 'true'):
-        sort_val += 10
-    elif (tunnel in ('yes', 'true') or
-          (railway == 'subway' and tunnel not in ('no', 'false'))):
-        sort_val -= 10
-
-    # Explicit layer is clipped to [-5, 5] range
-    layer = properties.get('layer')
-
-    if layer:
-        layer_float = _to_float(layer)
-        if layer_float is not None:
-            layer_float = max(min(layer_float, 5), -5)
-            # The range of values from above is [5, 34]
-            # For positive layer values, we want the range to be:
-            # [34, 39]
-            if layer_float > 0:
-                sort_val = int(layer_float + 34)
-            # For negative layer values, [0, 5]
-            elif layer_float < 0:
-                sort_val = int(layer_float + 5)
+        # Explicit layer is clipped to [-5, 5] range
+        layer = properties.get('layer')
+        if layer:
+            layer_float = _to_float(layer)
+            if layer_float is not None:
+                layer_float = max(min(layer_float, 5), -5)
+                # The range of values from above is [5, 34]
+                # For positive layer values, we want the range to be:
+                # [34, 39]
+                if layer_float > 0:
+                    sort_val = int(layer_float + 34)
+                # For negative layer values, [0, 5]
+                elif layer_float < 0:
+                    sort_val = int(layer_float + 5)
 
     properties['sort_key'] = sort_val
 
     return shape, properties, fid
 
 
-def road_trim_properties(shape, properties, fid):
+def road_trim_properties(shape, properties, fid, zoom):
     properties = _remove_properties(properties, 'bridge', 'layer', 'tunnel')
     return shape, properties, fid
 
@@ -291,7 +290,7 @@ def _reverse_line_direction(shape):
     return True
 
 
-def road_oneway(shape, properties, fid):
+def road_oneway(shape, properties, fid, zoom):
     oneway = properties.get('oneway')
     if oneway in ('-1', 'reverse'):
         did_reverse = _reverse_line_direction(shape)
@@ -304,7 +303,7 @@ def road_oneway(shape, properties, fid):
     return shape, properties, fid
 
 
-def road_abbreviate_name(shape, properties, fid):
+def road_abbreviate_name(shape, properties, fid, zoom):
     name = properties.get('name', None)
     if not name:
         return shape, properties, fid
@@ -313,7 +312,7 @@ def road_abbreviate_name(shape, properties, fid):
     return shape, properties, fid
 
 
-def route_name(shape, properties, fid):
+def route_name(shape, properties, fid, zoom):
     route_name = properties.get('route_name', '')
     if route_name:
         name = properties.get('name', '')
@@ -322,7 +321,7 @@ def route_name(shape, properties, fid):
     return shape, properties, fid
 
 
-def tags_create_dict(shape, properties, fid):
+def tags_create_dict(shape, properties, fid, zoom):
     tags_hstore = properties.get('tags')
     if tags_hstore:
         tags = dict(tags_hstore)
@@ -330,7 +329,7 @@ def tags_create_dict(shape, properties, fid):
     return shape, properties, fid
 
 
-def tags_remove(shape, properties, fid):
+def tags_remove(shape, properties, fid, zoom):
     properties.pop('tags', None)
     return shape, properties, fid
 
@@ -346,7 +345,7 @@ tag_name_alternates = (
 )
 
 
-def tags_name_i18n(shape, properties, fid):
+def tags_name_i18n(shape, properties, fid, zoom):
     tags = properties.get('tags')
     if not tags:
         return shape, properties, fid

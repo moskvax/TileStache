@@ -40,9 +40,9 @@ def make_transform_fn(transform_fns):
     if not transform_fns:
         return None
 
-    def transform_fn(shape, properties, fid):
+    def transform_fn(shape, properties, fid, zoom):
         for fn in transform_fns:
-            shape, properties, fid = fn(shape, properties, fid)
+            shape, properties, fid = fn(shape, properties, fid, zoom)
         return shape, properties, fid
     return transform_fn
 
@@ -336,7 +336,7 @@ class Response:
     def save(self, out, format):
         '''
         '''
-        features = get_features(self.dbinfo, self.query[format], self.geometry_types, self.transform_fn, self.sort_fn)
+        features = get_features(self.dbinfo, self.query[format], self.geometry_types, self.transform_fn, self.sort_fn, self.coord.zoom)
 
         if format == 'MVT':
             mvt.encode(out, features, self.coord, self.layer_name)
@@ -408,7 +408,7 @@ class MultiResponse:
                 width, height = layer.dim, layer.dim
                 tile = layer.provider.renderTile(width, height, layer.projection.srs, self.coord)
                 if isinstance(tile,EmptyResponse): continue
-                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["OpenScienceMap"], layer.provider.geometry_types, layer.provider.transform_fn, layer.provider.sort_fn)})
+                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["OpenScienceMap"], layer.provider.geometry_types, layer.provider.transform_fn, layer.provider.sort_fn, self.coord.zoom)})
             oscimap.merge(out, feature_layers, self.coord)
         
         elif format == 'MVT':
@@ -418,7 +418,7 @@ class MultiResponse:
                 width, height = layer.dim, layer.dim
                 tile = layer.provider.renderTile(width, height, layer.projection.srs, self.coord)
                 if isinstance(tile,EmptyResponse): continue
-                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["MVT"], layer.provider.geometry_types, layer.provider.transform_fn, layer.provider.sort_fn)})
+                feature_layers.append({'name': layer.name(), 'features': get_features(tile.dbinfo, tile.query["MVT"], layer.provider.geometry_types, layer.provider.transform_fn, layer.provider.sort_fn, self.coord.zoom)})
             mvt.merge(out, feature_layers, self.coord)
 
         else:
@@ -460,7 +460,9 @@ def query_columns(dbinfo, srid, subquery, bounds):
         column_names = set(x.name for x in db.description)
         return column_names
 
-def get_features(dbinfo, query, geometry_types, transform_fn, sort_fn, n_try=1):
+
+def get_features(dbinfo, query, geometry_types, transform_fn, sort_fn, zoom,
+                 n_try=1):
     features = []
 
     with Connection(dbinfo) as db:
@@ -472,7 +474,8 @@ def get_features(dbinfo, query, geometry_types, transform_fn, sort_fn, n_try=1):
                 raise
             else:
                 return get_features(dbinfo, query, geometry_types,
-                                    transform_fn, sort_fn, n_try=n_try + 1)
+                                    transform_fn, sort_fn, zoom,
+                                    n_try=n_try + 1)
         for row in db.fetchall():
             assert '__geometry__' in row, 'Missing __geometry__ in feature result'
             assert '__id__' in row, 'Missing __id__ in feature result'
@@ -489,13 +492,13 @@ def get_features(dbinfo, query, geometry_types, transform_fn, sort_fn, n_try=1):
             props = dict((k, v) for k, v in row.items() if v is not None)
 
             if transform_fn:
-                shape, props, id = transform_fn(shape, props, id)
+                shape, props, id = transform_fn(shape, props, id, zoom)
                 wkb = dumps(shape)
 
             features.append((wkb, props, id))
 
     if sort_fn:
-        features = sort_fn(features)
+        features = sort_fn(features, zoom)
 
     return features
 
