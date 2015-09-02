@@ -366,3 +366,12 @@ def tags_name_i18n(shape, properties, fid, zoom):
             properties[alt_tag_name_candidate] = alt_tag_name_value
 
     return shape, properties, fid
+
+def intercut(feature_layers, base_layer, cutting_layer, attribute=None):
+    for feature_layer in feature_layers:
+        layer_datum = feature_layer['layer_datum']
+        layer_name = layer_datum['name']
+        if layer_name == base_layer:
+            return feature_layer
+
+    return None
