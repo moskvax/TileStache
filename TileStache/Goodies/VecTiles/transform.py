@@ -367,11 +367,89 @@ def tags_name_i18n(shape, properties, fid, zoom):
 
     return shape, properties, fid
 
-def intercut(feature_layers, base_layer, cutting_layer, attribute=None):
+# intercut takes features from a base layer and cuts each
+# of them against a cutting layer, splitting any base
+# feature which intersects into separate inside and outside
+# parts.
+#
+# the parts of each base feature which are outside any
+# cutting feature are left unchanged. the parts which are
+# inside have their property with the key given by the
+# 'target_attribute' parameter set to the same value as the
+# property from the cutting feature with the key given by
+# the 'attribute' parameter.
+#
+# the intended use of this is to project attributes from one
+# layer to another so that they can be styled appropriately.
+#
+# returns a set of feature layers with the base layer
+# replaced by a cut one, or None if there's an error.
+def intercut(feature_layers, base_layer, cutting_layer, attribute=None, target_attribute=None):
+    base = None
+    cutting = None
+
+    # the target attribute can default to the attribute if
+    # they are distinct. but often they aren't, and that's
+    # why target_attribute is a separate parameter.
+    if target_attribute is None:
+        target_attribute = attribute
+
+    # search through all the layers and extract the ones
+    # which have the names of the base and cutting layer.
+    # it would seem to be better to use a dict() for
+    # layers, and this will give odd results if names are
+    # allowed to be duplicated.
     for feature_layer in feature_layers:
         layer_datum = feature_layer['layer_datum']
         layer_name = layer_datum['name']
-        if layer_name == base_layer:
-            return feature_layer
 
-    return None
+        if layer_name == base_layer:
+            base = feature_layer
+        elif layer_name == cutting_layer:
+            cutting = feature_layer
+
+    # didn't find one or other layer - what's the appropriate
+    # thing to do here, raise an error?
+    if base is None or cutting is None:
+        return None
+
+    base_features = base['features']
+    cutting_features = cutting['features']
+
+    # TODO: this is a very simple way of doing this, and would
+    # probably be better replaced by something that isn't O(N^2)
+    # and perhaps even unioned features with the same attribute
+    # together first.
+    for cutting_feature in cutting_features:
+        cutting_shape, cutting_props, cutting_id = cutting_feature
+        cutting_attr = None
+        if attribute is not None and attribute in cutting_props:
+            cutting_attr = cutting_props[attribute]
+
+        new_features = []
+        for index, base_feature in enumerate(base_features):
+            base_shape, base_props, base_id = base_feature
+
+            if base_shape.intersects(cutting_shape):
+                inside = base_shape.intersection(cutting_shape)
+                outside = base_shape.difference(cutting_shape)
+
+                if cutting_attr is not None:
+                    inside_props = base_props.copy()
+                    inside_props[target_attribute] = cutting_attr
+                else:
+                    inside_props = base_props
+
+                new_features.append((inside, inside_props, base_id))
+
+                if not outside.is_empty:
+                    new_features.append((outside, base_props, base_id))
+
+            else:
+                new_features.append(base_feature)
+
+        base_features = new_features
+
+    base['features'] = base_features
+
+    return base
