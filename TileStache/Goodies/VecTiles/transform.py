@@ -2,6 +2,8 @@
 
 from numbers import Number
 from StreetNames import short_street_name
+from collections import defaultdict
+from shapely.strtree import STRtree
 import re
 
 
@@ -367,6 +369,41 @@ def tags_name_i18n(shape, properties, fid, zoom):
 
     return shape, properties, fid
 
+# creates a list of indexes, each one for a different cut
+# attribute value, in priority order.
+#
+# STRtree stores geometries and returns these from the query,
+# but doesn't appear to allow any other attributes to be
+# stored along with the geometries. this means we have to
+# separate the index out into several "layers", each having
+# the same attribute value. which isn't all that much of a
+# pain, as we need to cut the shapes in a certain order to
+# ensure priority anyway.
+#
+# returns a list of (attribute value, index) pairs.
+def _make_cut_index(features, attrs, attribute):
+    group = defaultdict(list)
+    for feature in features:
+        shape, props, fid = feature
+        attr = props.get(attribute)
+        group[attr].append(shape)
+
+    # if the user didn't supply any options for controlling
+    # the cutting priority, then just make some up based on
+    # the attributes which are present in the dataset.
+    if attrs is None:
+        all_attrs = set()
+        for feature in features:
+            all_attrs.add(feature[1].get(attribute))
+        attrs = list(all_attrs)
+
+    cut_idxs = list()
+    for attr in attrs:
+        if attr in group:
+            cut_idxs.append((attr, STRtree(group[attr])))
+
+    return cut_idxs
+
 # intercut takes features from a base layer and cuts each
 # of them against a cutting layer, splitting any base
 # feature which intersects into separate inside and outside
@@ -382,9 +419,26 @@ def tags_name_i18n(shape, properties, fid, zoom):
 # the intended use of this is to project attributes from one
 # layer to another so that they can be styled appropriately.
 #
-# returns a set of feature layers with the base layer
-# replaced by a cut one.
-def intercut(feature_layers, base_layer, cutting_layer, attribute=None, target_attribute=None):
+# - feature_layers: list of layers containing both the base
+#     and cutting layer.
+# - base_layer: str name of the base layer.
+# - cutting_layer: str name of the cutting layer.
+# - attribute: optional str name of the property / attribute
+#     to take from the cutting layer.
+# - target_attribute: optional str name of the property /
+#     attribute to assign on the base layer. defaults to the
+#     same as the 'attribute' parameter.
+# - cutting_attrs: list of str, the priority of the values
+#     to be used in the cutting operation. this ensures that
+#     items at the beginning of the list get cut first and
+#     those values have priority (won't be overridden by any
+#     other shape cutting).
+#
+# returns a feature layer which is the base layer cut by the
+# cutting layer.
+def intercut(feature_layers, base_layer, cutting_layer,
+             attribute=None, target_attribute=None,
+             cutting_attrs=None):
     base = None
     cutting = None
 
@@ -411,43 +465,51 @@ def intercut(feature_layers, base_layer, cutting_layer, attribute=None, target_a
     assert base is not None and cutting is not None, \
         'could not find base or cutting layer in intercut. config error'
 
+    # just skip the whole thing if there's no attribute to
+    # cut with.
+    if attribute is None:
+        return base
+
     base_features = base['features']
     cutting_features = cutting['features']
 
-    # TODO: this is a very simple way of doing this, and would
-    # probably be better replaced by something that isn't O(N^2)
-    # and perhaps even unioned features with the same attribute
-    # together first.
-    for cutting_feature in cutting_features:
-        cutting_shape, cutting_props, cutting_id = cutting_feature
-        cutting_attr = None
-        if attribute is not None:
-            cutting_attr = cutting_props.get(attribute)
+    # make an index over all the cutting features
+    cut_idxs = _make_cut_index(cutting_features, cutting_attrs,
+                               attribute)
 
-        new_features = []
-        for base_feature in base_features:
-            base_shape, base_props, base_id = base_feature
+    new_features = []
+    for base_feature in base_features:
+        # we use shape to track the current remainder of the
+        # shape after subtracting bits which are inside cuts.
+        shape, base_props, base_id = base_feature
 
-            if base_shape.intersects(cutting_shape):
-                inside = base_shape.intersection(cutting_shape)
-                outside = base_shape.difference(cutting_shape)
+        for cutting_attr, cut_idx in cut_idxs:
+            cutting_shapes = cut_idx.query(shape)
 
-                if cutting_attr is not None:
-                    inside_props = base_props.copy()
-                    inside_props[target_attribute] = cutting_attr
-                else:
-                    inside_props = base_props
+            for cutting_shape in cutting_shapes:
+                if cutting_shape.intersects(shape):
+                    inside = shape.intersection(cutting_shape)
+                    outside = shape.difference(cutting_shape)
 
-                new_features.append((inside, inside_props, base_id))
+                    if cutting_attr is not None:
+                        inside_props = base_props.copy()
+                        inside_props[target_attribute] = cutting_attr
+                    else:
+                        inside_props = base_props
 
-                if not outside.is_empty:
-                    new_features.append((outside, base_props, base_id))
+                    new_features.append((inside, inside_props, base_id))
+                    shape = outside
 
-            else:
-                new_features.append(base_feature)
+            # if there's no geometry left outside the shape,
+            # then we can exit the loop early, as nothing else
+            # will intersect.
+            if shape.is_empty:
+                break
 
-        base_features = new_features
+        # if there's still geometry left outside
+        if not shape.is_empty:
+            new_features.append((shape, base_props, base_id))
 
-    base['features'] = base_features
+    base['features'] = new_features
 
     return base
