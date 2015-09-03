@@ -383,7 +383,7 @@ def tags_name_i18n(shape, properties, fid, zoom):
 # layer to another so that they can be styled appropriately.
 #
 # returns a set of feature layers with the base layer
-# replaced by a cut one, or None if there's an error.
+# replaced by a cut one.
 def intercut(feature_layers, base_layer, cutting_layer, attribute=None, target_attribute=None):
     base = None
     cutting = None
@@ -408,10 +408,8 @@ def intercut(feature_layers, base_layer, cutting_layer, attribute=None, target_a
         elif layer_name == cutting_layer:
             cutting = feature_layer
 
-    # didn't find one or other layer - what's the appropriate
-    # thing to do here, raise an error?
-    if base is None or cutting is None:
-        return None
+    assert base is not None and cutting is not None, \
+        'could not find base or cutting layer in intercut. config error'
 
     base_features = base['features']
     cutting_features = cutting['features']
@@ -423,11 +421,11 @@ def intercut(feature_layers, base_layer, cutting_layer, attribute=None, target_a
     for cutting_feature in cutting_features:
         cutting_shape, cutting_props, cutting_id = cutting_feature
         cutting_attr = None
-        if attribute is not None and attribute in cutting_props:
-            cutting_attr = cutting_props[attribute]
+        if attribute is not None:
+            cutting_attr = cutting_props.get(attribute)
 
         new_features = []
-        for index, base_feature in enumerate(base_features):
+        for base_feature in base_features:
             base_shape, base_props, base_id = base_feature
 
             if base_shape.intersects(cutting_shape):
