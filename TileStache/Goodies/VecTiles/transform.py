@@ -462,8 +462,15 @@ def intercut(feature_layers, base_layer, cutting_layer,
         elif layer_name == cutting_layer:
             cutting = feature_layer
 
-    assert base is not None and cutting is not None, \
-        'could not find base or cutting layer in intercut. config error'
+    # base or cutting layer not available. this could happen
+    # because of a config problem, in which case you'd want
+    # it to be reported. but also can happen when the client
+    # selects a subset of layers which don't include either
+    # the base or the cutting layer. then it's not an error.
+    # the interesting case is when they select the base but
+    # not the cutting layer...
+    if base is None or cutting is None:
+        return None
 
     # just skip the whole thing if there's no attribute to
     # cut with.
