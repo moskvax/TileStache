@@ -377,3 +377,52 @@ def tags_name_i18n(shape, properties, fid, zoom):
             properties[alt_tag_name_candidate] = alt_tag_name_value
 
     return shape, properties, fid
+
+
+# explicit order for some kinds of landuse
+_landuse_sort_order = {
+    'aerodrome': 2,
+    'apron': 3,
+    'cemetery': 2,
+    'commercial': 2,
+    'conservation': 1,
+    'farm': 1, 
+    'farmland': 1,
+    'forest': 1,
+    'golf_course': 2,
+    'hospital': 2,
+    'nature_reserve': 1,
+    'park': 1,
+    'parking': 2,
+    'pedestrian': 2,
+    'place_of_worship': 2,
+    'playground': 2,
+    'railway': 2,
+    'recreation_ground': 1,
+    'residential': 1,
+    'retail': 2,
+    'runway': 3,
+    'rural': 1,
+    'school': 2,
+    'stadium': 1,
+    'university': 2,
+    'urban': 1,
+    'zoo': 2
+}
+
+
+# sets a key "order" on anything with a landuse kind
+# specified in the landuse sort order above. this is
+# to help with maintaining a consistent order across
+# post-processing steps in the server and drawing
+# steps on the client.
+def landuse_sort_key(shape, properties, fid, zoom):
+    kind = properties.get('kind')
+
+    if kind is not None:
+        key = _landuse_sort_order.get(kind)
+        if key:
+            properties['order'] = key
+
+    return shape, properties, fid
+
