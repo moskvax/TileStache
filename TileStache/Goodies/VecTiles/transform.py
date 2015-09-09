@@ -437,7 +437,7 @@ def _make_cut_index(features, attrs, attribute):
 # returns a feature layer which is the base layer cut by the
 # cutting layer.
 def intercut(feature_layers, base_layer, cutting_layer,
-             attribute=None, target_attribute=None,
+             attribute, target_attribute=None,
              cutting_attrs=None):
     base = None
     cutting = None
@@ -472,10 +472,12 @@ def intercut(feature_layers, base_layer, cutting_layer,
     if base is None or cutting is None:
         return None
 
-    # just skip the whole thing if there's no attribute to
-    # cut with.
-    if attribute is None:
-        return base
+    # sanity check on the availability of the cutting
+    # attribute.
+    assert attribute is not None, \
+        'Parameter attribute to intercut was None, but ' + \
+        'should have been an attribute name. Perhaps check ' + \
+        'your configuration file and queries.'
 
     base_features = base['features']
     cutting_features = cutting['features']
