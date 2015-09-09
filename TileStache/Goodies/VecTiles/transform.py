@@ -421,7 +421,7 @@ def landuse_sort_key(shape, properties, fid, zoom):
 
     if kind is not None:
         key = _landuse_sort_order.get(kind)
-        if key:
+        if key is not None:
             properties['order'] = key
 
     return shape, properties, fid
