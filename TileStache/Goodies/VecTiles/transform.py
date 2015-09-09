@@ -630,7 +630,9 @@ def calculate_default_place_scalerank(shape, properties, fid, zoom):
     if kind is None:
         return shape, properties, fid
 
-    scalerank = _default_scalerank_for_place_kind[kind]
+    scalerank = _default_scalerank_for_place_kind.get(kind)
+    if scalerank is None:
+        return shape, properties, fid
 
     # adjust scalerank for state / country capitals
     if (kind == 'city') or (kind == 'town'):
