@@ -635,7 +635,7 @@ def calculate_default_place_scalerank(shape, properties, fid, zoom):
         return shape, properties, fid
 
     # adjust scalerank for state / country capitals
-    if (kind == 'city') or (kind == 'town'):
+    if kind in ('city', 'town'):
         if properties.get('state_capital') == 'yes':
             scalerank -= 1
         elif properties.get('capital') == 'yes':
