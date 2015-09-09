@@ -584,3 +584,52 @@ def landuse_sort_key(shape, properties, fid, zoom):
 
     return shape, properties, fid
 
+
+# place kinds, as used by OSM, mapped to their rough
+# scale_ranks so that we can provide a defaulted,
+# non-curated scale_rank / min_zoom value.
+_default_scalerank_for_place_kind = {
+    'locality': 13,
+    'isolated_dwelling': 13,
+    'farm': 13,
+
+    'hamlet': 12,
+    'neighbourhood': 12,
+
+    'village': 11,
+
+    'suburb': 10,
+    'quarter': 10,
+    'borough': 10,
+
+    'town': 8,
+    'city': 8,
+
+    'province': 4,
+    'state': 4,
+
+    'sea': 3,
+
+    'country': 0,
+    'ocean': 0,
+    'continent': 0
+}
+
+
+# if the feature does not have a scale_rank attribute already,
+# which would have come from a curated source, then calculate
+# a default one based on the kind of place it is.
+def calculate_default_place_scalerank(shape, properties, fid, zoom):
+    # don't override an existing attribute
+    scalerank = properties.get('scalerank')
+    if scalerank is not None:
+        return shape, properties, fid
+
+    # base calculation off kind
+    kind = properties.get('kind')
+    if kind is None:
+        return shape, properties, fid
+
+    properties['scalerank'] = _default_scalerank_for_place_kind[kind]
+
+    return shape, properties, fid
