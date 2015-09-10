@@ -36,7 +36,7 @@ def _by_population(feature):
     return population
 
 
-def _sort_by_place_kind_then_population(features):
+def _sort_by_scalerank_then_population(features):
     features.sort(key=_by_population, reverse=True)
     features.sort(key=_by_scalerank)
     return features
@@ -55,7 +55,7 @@ def landuse(features, zoom):
 
 
 def places(features, zoom):
-    return _sort_by_place_kind_then_population(features)
+    return _sort_by_scalerank_then_population(features)
 
 
 def pois(features, zoom):
