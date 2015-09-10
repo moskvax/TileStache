@@ -673,6 +673,7 @@ def exterior_boundaries(feature_layers, base_layer,
 
         if layer_name == base_layer:
             layer = feature_layer
+            break
 
     # if we failed to find the base layer then it's
     # possible the user just didn't ask for it, so return
