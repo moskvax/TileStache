@@ -4,6 +4,7 @@ from numbers import Number
 from StreetNames import short_street_name
 from collections import defaultdict
 from shapely.strtree import STRtree
+from shapely.geometry.base import BaseMultipartGeometry
 import re
 
 
@@ -391,30 +392,101 @@ def tags_name_i18n(shape, properties, fid, zoom):
 # the same attribute value. which isn't all that much of a
 # pain, as we need to cut the shapes in a certain order to
 # ensure priority anyway.
-#
-# returns a list of (attribute value, index) pairs.
-def _make_cut_index(features, attrs, attribute):
-    group = defaultdict(list)
-    for feature in features:
-        shape, props, fid = feature
-        attr = props.get(attribute)
-        group[attr].append(shape)
-
-    # if the user didn't supply any options for controlling
-    # the cutting priority, then just make some up based on
-    # the attributes which are present in the dataset.
-    if attrs is None:
-        all_attrs = set()
+class _Cutter:
+    def __init__(self, features, attrs, attribute,
+                 target_attribute, keep_geom_type):
+        group = defaultdict(list)
         for feature in features:
-            all_attrs.add(feature[1].get(attribute))
-        attrs = list(all_attrs)
+            shape, props, fid = feature
+            attr = props.get(attribute)
+            group[attr].append(shape)
 
-    cut_idxs = list()
-    for attr in attrs:
-        if attr in group:
-            cut_idxs.append((attr, STRtree(group[attr])))
+        # if the user didn't supply any options for controlling
+        # the cutting priority, then just make some up based on
+        # the attributes which are present in the dataset.
+        if attrs is None:
+            all_attrs = set()
+            for feature in features:
+                all_attrs.add(feature[1].get(attribute))
+            attrs = list(all_attrs)
 
-    return cut_idxs
+        cut_idxs = list()
+        for attr in attrs:
+            if attr in group:
+                cut_idxs.append((attr, STRtree(group[attr])))
+
+        self.attribute = attribute
+        self.target_attribute = target_attribute
+        self.cut_idxs = cut_idxs
+        self.keep_geom_type = keep_geom_type
+        self.new_features = []
+
+
+    # cut up the argument shape, projecting the configured
+    # attribute to the properties of the intersecting parts
+    # of the shape. adds all the cut up bits to the
+    # new_features list.
+    def cut(self, shape, props, fid):
+        original_geom_type = type(shape)
+
+        for cutting_attr, cut_idx in self.cut_idxs:
+            cutting_shapes = cut_idx.query(shape)
+
+            for cutting_shape in cutting_shapes:
+                if cutting_shape.intersects(shape):
+                    shape = self._intersect(
+                        shape, props, fid, cutting_shape,
+                        cutting_attr, original_geom_type)
+
+            # if there's no geometry left outside the
+            # shape, then we can exit the loop early, as
+            # nothing else will intersect.
+            if shape.is_empty:
+                break
+
+        # if there's still geometry left outside, then it
+        # keeps the old, unaltered properties.
+        self._add(shape, props, fid, original_geom_type)
+
+
+    # only keep geometries where either the type is the
+    # same as the original, or we're not trying to keep the
+    # same type.
+    def _add(self, shape, props, fid, original_geom_type):
+        if (not shape.is_empty and
+            (not self.keep_geom_type or
+             isinstance(shape, original_geom_type))):
+            self.new_features.append((shape, props, fid))
+
+        # if it's a multi-geometry, then split it up so
+        # that we can compare the types of the leaves.
+        # note that we compare the type first, just in
+        # case the original was a multi*.
+        elif isinstance(shape, BaseMultipartGeometry):
+            for geom in shape.geoms:
+                self._add(geom, props, fid,
+                          original_geom_type)
+
+
+    # intersects the shape with the cutting shape and
+    # handles attribute projection. anything "inside" is
+    # kept as it must have intersected the highest
+    # priority cutting shape already. the remainder is
+    # returned.
+    def _intersect(self, shape, props, fid, cutting_shape,
+                   cutting_attr, original_geom_type):
+        inside = shape.intersection(cutting_shape)
+        outside = shape.difference(cutting_shape)
+
+        if cutting_attr is not None:
+            inside_props = props.copy()
+            inside_props[self.target_attribute] = cutting_attr
+        else:
+            inside_props = props
+
+        self._add(inside, inside_props, fid,
+                  original_geom_type)
+        return outside
 
 
 # intercut takes features from a base layer and cuts each
@@ -446,12 +518,16 @@ def _make_cut_index(features, attrs, attribute):
 #     items at the beginning of the list get cut first and
 #     those values have priority (won't be overridden by any
 #     other shape cutting).
+# - keep_geom_type: if truthy, then filter the output to be
+#     the same type as the input. defaults to True, because
+#     this seems like an eminently sensible behaviour.
 #
 # returns a feature layer which is the base layer cut by the
 # cutting layer.
 def intercut(feature_layers, base_layer, cutting_layer,
              attribute, target_attribute=None,
-             cutting_attrs=None):
+             cutting_attrs=None,
+             keep_geom_type=True):
     base = None
     cutting = None
 
@@ -495,44 +571,19 @@ def intercut(feature_layers, base_layer, cutting_layer,
     base_features = base['features']
     cutting_features = cutting['features']
 
-    # make an index over all the cutting features
-    cut_idxs = _make_cut_index(cutting_features, cutting_attrs,
-                               attribute)
+    # make a cutter object to help out
+    cutter = _Cutter(cutting_features, cutting_attrs,
+                     attribute, target_attribute,
+                     keep_geom_type)
 
-    new_features = []
     for base_feature in base_features:
         # we use shape to track the current remainder of the
         # shape after subtracting bits which are inside cuts.
-        shape, base_props, base_id = base_feature
+        shape, props, fid = base_feature
 
-        for cutting_attr, cut_idx in cut_idxs:
-            cutting_shapes = cut_idx.query(shape)
+        cutter.cut(shape, props, fid)
 
-            for cutting_shape in cutting_shapes:
-                if cutting_shape.intersects(shape):
-                    inside = shape.intersection(cutting_shape)
-                    outside = shape.difference(cutting_shape)
-
-                    if cutting_attr is not None:
-                        inside_props = base_props.copy()
-                        inside_props[target_attribute] = cutting_attr
-                    else:
-                        inside_props = base_props
-
-                    new_features.append((inside, inside_props, base_id))
-                    shape = outside
-
-            # if there's no geometry left outside the shape,
-            # then we can exit the loop early, as nothing else
-            # will intersect.
-            if shape.is_empty:
-                break
-
-        # if there's still geometry left outside
-        if not shape.is_empty:
-            new_features.append((shape, base_props, base_id))
-
-    base['features'] = new_features
+    base['features'] = cutter.new_features
 
     return base
 
