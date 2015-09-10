@@ -576,7 +576,6 @@ def intercut(feature_layers, base_layer, cutting_layer,
                      attribute, target_attribute,
                      keep_geom_type)
 
-    new_features = []
     for base_feature in base_features:
         # we use shape to track the current remainder of the
         # shape after subtracting bits which are inside cuts.
