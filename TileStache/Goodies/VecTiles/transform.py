@@ -7,7 +7,10 @@ from shapely.strtree import STRtree
 import re
 
 
-def _to_float(x):
+# attempts to convert x to a floating point value,
+# first removing some common punctuation. returns
+# None if conversion failed.
+def to_float(x):
     if x is None:
         return None
     # normalize punctuation

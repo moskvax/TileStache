@@ -1,3 +1,5 @@
+from transform import to_float
+
 # sort functions to apply to features
 
 
@@ -32,12 +34,11 @@ def _by_scalerank(feature):
 def _by_population(feature):
     wkb, properties, fid = feature
     default_value = -1000
-    population_str = properties.get('population', default_value)
-    try:
-        population = int(population_str)
-    except ValueError:
-        population = default_value
-    return population
+    population_flt = to_float(properties.get('population', default_value))
+    if population_flt is not None:
+        return int(population_flt)
+    else:
+        return default_value
 
 
 def _sort_by_scalerank_then_population(features):
