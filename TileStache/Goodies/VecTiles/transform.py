@@ -4,6 +4,7 @@ from numbers import Number
 from StreetNames import short_street_name
 from collections import defaultdict
 from shapely.strtree import STRtree
+from shapely.geometry.base import BaseMultipartGeometry
 import re
 
 
@@ -456,6 +457,15 @@ class _Cutter:
             (not self.keep_geom_type or
              original_geom_type == shape.geom_type)):
             self.new_features.append((shape, props, fid))
+
+        # if it's a multi-geometry, then split it up so
+        # that we can compare the types of the leaves.
+        # note that we compare the type first, just in
+        # case the original was a multi*.
+        elif isinstance(shape, BaseMultipartGeometry):
+            for geom in shape.geoms:
+                self._add(geom, props, fid,
+                          original_geom_type)
 
 
     # intersects the shape with the cutting shape and
