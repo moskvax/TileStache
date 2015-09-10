@@ -446,12 +446,16 @@ def _make_cut_index(features, attrs, attribute):
 #     items at the beginning of the list get cut first and
 #     those values have priority (won't be overridden by any
 #     other shape cutting).
+# - keep_geom_type: if truthy, then filter the output to be
+#     the same type as the input. defaults to True, because
+#     this seems like an eminently sensible behaviour.
 #
 # returns a feature layer which is the base layer cut by the
 # cutting layer.
 def intercut(feature_layers, base_layer, cutting_layer,
              attribute, target_attribute=None,
-             cutting_attrs=None):
+             cutting_attrs=None,
+             keep_geom_type=True):
     base = None
     cutting = None
 
@@ -504,6 +508,7 @@ def intercut(feature_layers, base_layer, cutting_layer,
         # we use shape to track the current remainder of the
         # shape after subtracting bits which are inside cuts.
         shape, base_props, base_id = base_feature
+        original_geom_type = shape.geom_type
 
         for cutting_attr, cut_idx in cut_idxs:
             cutting_shapes = cut_idx.query(shape)
@@ -519,7 +524,12 @@ def intercut(feature_layers, base_layer, cutting_layer,
                     else:
                         inside_props = base_props
 
-                    new_features.append((inside, inside_props, base_id))
+                    # only keep geometries where either the
+                    # type is the same as the original, or
+                    # we're not trying to keep the same type.
+                    if (not keep_geom_type or
+                        original_geom_type == inside.geom_type):
+                        new_features.append((inside, inside_props, base_id))
                     shape = outside
 
             # if there's no geometry left outside the shape,
@@ -528,8 +538,11 @@ def intercut(feature_layers, base_layer, cutting_layer,
             if shape.is_empty:
                 break
 
-        # if there's still geometry left outside
-        if not shape.is_empty:
+        # if there's still geometry left outside, and it's the
+        # same type as original (or we don't care).
+        if (not shape.is_empty and
+            (not keep_geom_type or
+             original_geom_type == shape.geom_type)):
             new_features.append((shape, base_props, base_id))
 
     base['features'] = new_features
