@@ -29,7 +29,7 @@ def _to_float_meters(x):
     if x is None:
         return None
 
-    as_float = _to_float(x)
+    as_float = to_float(x)
     if as_float is not None:
         return as_float
 
@@ -38,7 +38,7 @@ def _to_float_meters(x):
 
     # try explicit meters suffix
     if x.endswith(' m'):
-        meters_as_float = _to_float(x[:-2])
+        meters_as_float = to_float(x[:-2])
         if meters_as_float is not None:
             return meters_as_float
 
@@ -47,8 +47,8 @@ def _to_float_meters(x):
     if feet_match is not None:
         feet = feet_match.group(1)
         inches = feet_match.group(2)
-        feet_as_float = _to_float(feet)
-        inches_as_float = _to_float(inches)
+        feet_as_float = to_float(feet)
+        inches_as_float = to_float(inches)
 
         total_inches = 0.0
         parsed_feet_or_inches = False
@@ -65,7 +65,7 @@ def _to_float_meters(x):
     # try and match the first number that can be parsed
     for number_match in number_pattern.finditer(x):
         potential_number = number_match.group(1)
-        as_float = _to_float(potential_number)
+        as_float = to_float(potential_number)
         if as_float is not None:
             return as_float
 
@@ -265,7 +265,7 @@ def road_sort_key(shape, properties, fid, zoom):
         # Explicit layer is clipped to [-5, 5] range
         layer = properties.get('layer')
         if layer:
-            layer_float = _to_float(layer)
+            layer_float = to_float(layer)
             if layer_float is not None:
                 layer_float = max(min(layer_float, 5), -5)
                 # The range of values from above is [5, 34]
