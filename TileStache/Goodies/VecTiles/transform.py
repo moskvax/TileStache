@@ -427,7 +427,7 @@ class _Cutter:
     # of the shape. adds all the cut up bits to the
     # new_features list.
     def cut(self, shape, props, fid):
-        original_geom_type = shape.geom_type
+        original_geom_type = type(shape)
 
         for cutting_attr, cut_idx in self.cut_idxs:
             cutting_shapes = cut_idx.query(shape)
@@ -455,7 +455,7 @@ class _Cutter:
     def _add(self, shape, props, fid, original_geom_type):
         if (not shape.is_empty and
             (not self.keep_geom_type or
-             original_geom_type == shape.geom_type)):
+             isinstance(shape, original_geom_type))):
             self.new_features.append((shape, props, fid))
 
         # if it's a multi-geometry, then split it up so
