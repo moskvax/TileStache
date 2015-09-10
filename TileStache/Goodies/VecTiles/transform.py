@@ -644,3 +644,74 @@ def calculate_default_place_scalerank(shape, properties, fid, zoom):
     properties['scalerank'] = scalerank
 
     return shape, properties, fid
+
+
+# create a new layer from the boundaries of polygons in the
+# base layer, subtracting any sections of the boundary which
+# intersect other polygons.
+#
+# the purpose of this is to provide us a shoreline / river
+# bank layer from the water layer without having any of the
+# shoreline / river bank draw over the top of any of the base
+# polygons.
+#
+# properties on the lines returned are the same as the
+# polygon feature they came from.
+#
+# any features in feature_layers[layer] which aren't
+# polygons will be ignored.
+def exterior_boundaries(feature_layers, base_layer,
+                        new_layer_name):
+    layer = None
+
+    # search through all the layers and extract the one
+    # which has the name of the base layer we were given
+    # as a parameter.
+    for feature_layer in feature_layers:
+        layer_datum = feature_layer['layer_datum']
+        layer_name = layer_datum['name']
+
+        if layer_name == base_layer:
+            layer = feature_layer
+
+    # if we failed to find the base layer then it's
+    # possible the user just didn't ask for it, so return
+    # an empty result.
+    if layer is None:
+        return None
+
+    features = layer['features']
+
+    # create an index so that we can efficiently find the
+    # polygons intersecting the 'current' one.
+    index = STRtree([f[0] for f in features])
+
+    new_features = list()
+    # loop through all the polygons, taking the boundary
+    # of each and subtracting any parts which are within
+    # other polygons. what remains (if anything) is the
+    # new feature.
+    for feature in features:
+        shape, props, fid = feature
+        if shape.geom_type in ('Polygon', 'MultiPolygon'):
+            boundary = shape.boundary
+            cutting_shapes = index.query(boundary)
+            for cutting_shape in cutting_shapes:
+                if cutting_shape is not shape:
+                    boundary = boundary.difference(cutting_shape)
+            if not boundary.is_empty:
+                new_features.append((boundary, props.copy(), fid))
+
+    # make a copy of the old layer's information - it
+    # shouldn't matter about most of the settings, as
+    # post-processing is one of the last operations.
+    # but we need to override the name to ensure we get
+    # some output.
+    new_layer_datum = layer['layer_datum'].copy()
+    new_layer_datum['name'] = new_layer_name
+    new_layer = layer.copy()
+    new_layer['layer_datum'] = new_layer_datum
+    new_layer['features'] = new_features
+    new_layer['name'] = new_layer_name
+
+    return new_layer
