@@ -134,7 +134,7 @@ class VectorTile:
             # add number of points (for multi-point)
             if len(geom.coordinates) > 2:
                 logging.info('points %s' %len(geom.coordinates))
-                feature.indices.add(geom.coordinates/2)
+                feature.indices.append(len(geom.coordinates)/2)
         else:
             # empty geometry
             if len(geom.index) == 0:

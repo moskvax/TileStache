@@ -2,6 +2,8 @@
 
 from numbers import Number
 from StreetNames import short_street_name
+from collections import defaultdict
+from shapely.strtree import STRtree
 import re
 
 
@@ -375,5 +377,270 @@ def tags_name_i18n(shape, properties, fid, zoom):
         alt_tag_name_value = tags.get(alt_tag_name_candidate)
         if alt_tag_name_value and alt_tag_name_value != name:
             properties[alt_tag_name_candidate] = alt_tag_name_value
+
+    return shape, properties, fid
+
+
+# creates a list of indexes, each one for a different cut
+# attribute value, in priority order.
+#
+# STRtree stores geometries and returns these from the query,
+# but doesn't appear to allow any other attributes to be
+# stored along with the geometries. this means we have to
+# separate the index out into several "layers", each having
+# the same attribute value. which isn't all that much of a
+# pain, as we need to cut the shapes in a certain order to
+# ensure priority anyway.
+#
+# returns a list of (attribute value, index) pairs.
+def _make_cut_index(features, attrs, attribute):
+    group = defaultdict(list)
+    for feature in features:
+        shape, props, fid = feature
+        attr = props.get(attribute)
+        group[attr].append(shape)
+
+    # if the user didn't supply any options for controlling
+    # the cutting priority, then just make some up based on
+    # the attributes which are present in the dataset.
+    if attrs is None:
+        all_attrs = set()
+        for feature in features:
+            all_attrs.add(feature[1].get(attribute))
+        attrs = list(all_attrs)
+
+    cut_idxs = list()
+    for attr in attrs:
+        if attr in group:
+            cut_idxs.append((attr, STRtree(group[attr])))
+
+    return cut_idxs
+
+
+# intercut takes features from a base layer and cuts each
+# of them against a cutting layer, splitting any base
+# feature which intersects into separate inside and outside
+# parts.
+#
+# the parts of each base feature which are outside any
+# cutting feature are left unchanged. the parts which are
+# inside have their property with the key given by the
+# 'target_attribute' parameter set to the same value as the
+# property from the cutting feature with the key given by
+# the 'attribute' parameter.
+#
+# the intended use of this is to project attributes from one
+# layer to another so that they can be styled appropriately.
+#
+# - feature_layers: list of layers containing both the base
+#     and cutting layer.
+# - base_layer: str name of the base layer.
+# - cutting_layer: str name of the cutting layer.
+# - attribute: optional str name of the property / attribute
+#     to take from the cutting layer.
+# - target_attribute: optional str name of the property /
+#     attribute to assign on the base layer. defaults to the
+#     same as the 'attribute' parameter.
+# - cutting_attrs: list of str, the priority of the values
+#     to be used in the cutting operation. this ensures that
+#     items at the beginning of the list get cut first and
+#     those values have priority (won't be overridden by any
+#     other shape cutting).
+#
+# returns a feature layer which is the base layer cut by the
+# cutting layer.
+def intercut(feature_layers, base_layer, cutting_layer,
+             attribute, target_attribute=None,
+             cutting_attrs=None):
+    base = None
+    cutting = None
+
+    # the target attribute can default to the attribute if
+    # they are distinct. but often they aren't, and that's
+    # why target_attribute is a separate parameter.
+    if target_attribute is None:
+        target_attribute = attribute
+
+    # search through all the layers and extract the ones
+    # which have the names of the base and cutting layer.
+    # it would seem to be better to use a dict() for
+    # layers, and this will give odd results if names are
+    # allowed to be duplicated.
+    for feature_layer in feature_layers:
+        layer_datum = feature_layer['layer_datum']
+        layer_name = layer_datum['name']
+
+        if layer_name == base_layer:
+            base = feature_layer
+        elif layer_name == cutting_layer:
+            cutting = feature_layer
+
+    # base or cutting layer not available. this could happen
+    # because of a config problem, in which case you'd want
+    # it to be reported. but also can happen when the client
+    # selects a subset of layers which don't include either
+    # the base or the cutting layer. then it's not an error.
+    # the interesting case is when they select the base but
+    # not the cutting layer...
+    if base is None or cutting is None:
+        return None
+
+    # sanity check on the availability of the cutting
+    # attribute.
+    assert attribute is not None, \
+        'Parameter attribute to intercut was None, but ' + \
+        'should have been an attribute name. Perhaps check ' + \
+        'your configuration file and queries.'
+
+    base_features = base['features']
+    cutting_features = cutting['features']
+
+    # make an index over all the cutting features
+    cut_idxs = _make_cut_index(cutting_features, cutting_attrs,
+                               attribute)
+
+    new_features = []
+    for base_feature in base_features:
+        # we use shape to track the current remainder of the
+        # shape after subtracting bits which are inside cuts.
+        shape, base_props, base_id = base_feature
+
+        for cutting_attr, cut_idx in cut_idxs:
+            cutting_shapes = cut_idx.query(shape)
+
+            for cutting_shape in cutting_shapes:
+                if cutting_shape.intersects(shape):
+                    inside = shape.intersection(cutting_shape)
+                    outside = shape.difference(cutting_shape)
+
+                    if cutting_attr is not None:
+                        inside_props = base_props.copy()
+                        inside_props[target_attribute] = cutting_attr
+                    else:
+                        inside_props = base_props
+
+                    new_features.append((inside, inside_props, base_id))
+                    shape = outside
+
+            # if there's no geometry left outside the shape,
+            # then we can exit the loop early, as nothing else
+            # will intersect.
+            if shape.is_empty:
+                break
+
+        # if there's still geometry left outside
+        if not shape.is_empty:
+            new_features.append((shape, base_props, base_id))
+
+    base['features'] = new_features
+
+    return base
+
+
+# explicit order for some kinds of landuse
+_landuse_sort_order = {
+    'aerodrome': 2,
+    'apron': 3,
+    'cemetery': 2,
+    'commercial': 2,
+    'conservation': 1,
+    'farm': 1, 
+    'farmland': 1,
+    'forest': 1,
+    'golf_course': 2,
+    'hospital': 2,
+    'nature_reserve': 1,
+    'park': 1,
+    'parking': 2,
+    'pedestrian': 2,
+    'place_of_worship': 2,
+    'playground': 2,
+    'railway': 2,
+    'recreation_ground': 1,
+    'residential': 1,
+    'retail': 2,
+    'runway': 3,
+    'rural': 1,
+    'school': 2,
+    'stadium': 1,
+    'university': 2,
+    'urban': 1,
+    'zoo': 2
+}
+
+
+# sets a key "order" on anything with a landuse kind
+# specified in the landuse sort order above. this is
+# to help with maintaining a consistent order across
+# post-processing steps in the server and drawing
+# steps on the client.
+def landuse_sort_key(shape, properties, fid, zoom):
+    kind = properties.get('kind')
+
+    if kind is not None:
+        key = _landuse_sort_order.get(kind)
+        if key is not None:
+            properties['order'] = key
+
+    return shape, properties, fid
+
+
+# place kinds, as used by OSM, mapped to their rough
+# scale_ranks so that we can provide a defaulted,
+# non-curated scale_rank / min_zoom value.
+_default_scalerank_for_place_kind = {
+    'locality': 13,
+    'isolated_dwelling': 13,
+    'farm': 13,
+
+    'hamlet': 12,
+    'neighbourhood': 12,
+
+    'village': 11,
+
+    'suburb': 10,
+    'quarter': 10,
+    'borough': 10,
+
+    'town': 8,
+    'city': 8,
+
+    'province': 4,
+    'state': 4,
+
+    'sea': 3,
+
+    'country': 0,
+    'ocean': 0,
+    'continent': 0
+}
+
+
+# if the feature does not have a scale_rank attribute already,
+# which would have come from a curated source, then calculate
+# a default one based on the kind of place it is.
+def calculate_default_place_scalerank(shape, properties, fid, zoom):
+    # don't override an existing attribute
+    scalerank = properties.get('scalerank')
+    if scalerank is not None:
+        return shape, properties, fid
+
+    # base calculation off kind
+    kind = properties.get('kind')
+    if kind is None:
+        return shape, properties, fid
+
+    scalerank = _default_scalerank_for_place_kind.get(kind)
+    if scalerank is None:
+        return shape, properties, fid
+
+    # adjust scalerank for state / country capitals
+    if kind in ('city', 'town'):
+        if properties.get('state_capital') == 'yes':
+            scalerank -= 1
+        elif properties.get('capital') == 'yes':
+            scalerank -= 2
+
+    properties['scalerank'] = scalerank
 
     return shape, properties, fid
