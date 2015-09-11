@@ -646,22 +646,67 @@ def calculate_default_place_scalerank(shape, properties, fid, zoom):
     return shape, properties, fid
 
 
-# create a new layer from the boundaries of polygons in the
-# base layer, subtracting any sections of the boundary which
-# intersect other polygons.
-#
-# the purpose of this is to provide us a shoreline / river
-# bank layer from the water layer without having any of the
-# shoreline / river bank draw over the top of any of the base
-# polygons.
-#
-# properties on the lines returned are the same as the
-# polygon feature they came from.
-#
-# any features in feature_layers[layer] which aren't
-# polygons will be ignored.
+def _make_new_properties(props, props_instructions):
+    """
+    make new properties from existing properties and a
+    dict of instructions.
+
+    the algorithm is:
+      - where a key appears with value True, it will be
+        copied from the existing properties.
+      - where it's a dict, the values will be looked up
+        in that dict.
+      - otherwise the value will be used directly.
+    """
+    new_props = dict()
+
+    for k, v in props_instructions.iteritems():
+        if v is True:
+            # this works even when props[k] = None
+            if k in props:
+                new_props[k] = props[k]
+        elif isinstance(v, dict):
+            # this will return None, which allows us to
+            # use the dict to set default values.
+            original_v = props.get(k)
+            if original_v in v:
+                new_props[k] = v[original_v]
+        else:
+            new_props[k] = v
+
+    print "Got %s properties, %s instructions => %s" % (repr(props), repr(props_instructions), repr(new_props))
+
+    return new_props
+
 def exterior_boundaries(feature_layers, base_layer,
-                        new_layer_name):
+                        new_layer_name=None,
+                        prop_transform=dict(),
+                        buffer_size=None):
+    """
+    create new fetures from the boundaries of polygons
+    in the base layer, subtracting any sections of the
+    boundary which intersect other polygons. this is
+    added as a new layer if new_layer_name is not None
+    otherwise appended to the base layer.
+
+    the purpose of this is to provide us a shoreline /
+    river bank layer from the water layer without having
+    any of the shoreline / river bank draw over the top
+    of any of the base polygons.
+
+    properties on the lines returned are copied / adapted
+    from the existing layer using the new_props dict. see
+    _make_new_properties above for the rules.
+
+    buffer_size determines whether any buffering will be
+    done to the index polygons. a judiciously small
+    amount of buffering can help avoid "dashing" due to
+    tolerance in the intersection, but will also create
+    small overlaps between lines.
+
+    any features in feature_layers[layer] which aren't
+    polygons will be ignored.
+    """
     layer = None
 
     # search through all the layers and extract the one
@@ -694,25 +739,44 @@ def exterior_boundaries(feature_layers, base_layer,
     # new feature.
     for feature in features:
         shape, props, fid = feature
+
         if shape.geom_type in ('Polygon', 'MultiPolygon'):
             boundary = shape.boundary
             cutting_shapes = index.query(boundary)
+
             for cutting_shape in cutting_shapes:
                 if cutting_shape is not shape:
-                    boundary = boundary.difference(cutting_shape)
+                    buf = cutting_shape
+
+                    if buffer_size is not None:
+                        buf = buf.buffer(buffer_size)
+
+                    boundary = boundary.difference(buf)
+
             if not boundary.is_empty:
-                new_features.append((boundary, props.copy(), fid))
+                new_props = _make_new_properties(props,
+                    prop_transform)
+                new_features.append((boundary, new_props, fid))
 
-    # make a copy of the old layer's information - it
-    # shouldn't matter about most of the settings, as
-    # post-processing is one of the last operations.
-    # but we need to override the name to ensure we get
-    # some output.
-    new_layer_datum = layer['layer_datum'].copy()
-    new_layer_datum['name'] = new_layer_name
-    new_layer = layer.copy()
-    new_layer['layer_datum'] = new_layer_datum
-    new_layer['features'] = new_features
-    new_layer['name'] = new_layer_name
+    if new_layer_name is None:
+        # no new layer requested, instead add new
+        # features into the same layer.
+        print "Adding %d new features to %s" % (len(new_features), repr(layer['name']))
+        layer['features'].extend(new_features)
 
-    return new_layer
+        return layer
+
+    else:
+        # make a copy of the old layer's information - it
+        # shouldn't matter about most of the settings, as
+        # post-processing is one of the last operations.
+        # but we need to override the name to ensure we get
+        # some output.
+        new_layer_datum = layer['layer_datum'].copy()
+        new_layer_datum['name'] = new_layer_name
+        new_layer = layer.copy()
+        new_layer['layer_datum'] = new_layer_datum
+        new_layer['features'] = new_features
+        new_layer['name'] = new_layer_name
+
+        return new_layer
