@@ -395,9 +395,13 @@ def tags_name_i18n(shape, properties, fid, zoom):
 # the same attribute value. which isn't all that much of a
 # pain, as we need to cut the shapes in a certain order to
 # ensure priority anyway.
+#
+# intersect_func is a functor passed in to control how an
+# intersection is performed. it is passed
 class _Cutter:
     def __init__(self, features, attrs, attribute,
-                 target_attribute, keep_geom_type):
+                 target_attribute, keep_geom_type,
+                 intersect_func):
         group = defaultdict(list)
         for feature in features:
             shape, props, fid = feature
@@ -422,12 +426,13 @@ class _Cutter:
         self.target_attribute = target_attribute
         self.cut_idxs = cut_idxs
         self.keep_geom_type = keep_geom_type
+        self.intersect_func = intersect_func
         self.new_features = []
 
 
     # cut up the argument shape, projecting the configured
     # attribute to the properties of the intersecting parts
-    # of the shape. adds all the cut up bits to the
+    # of the shape. adds all the selected bits to the
     # new_features list.
     def cut(self, shape, props, fid):
         original_geom_type = type(shape)
@@ -478,8 +483,8 @@ class _Cutter:
     # returned.
     def _intersect(self, shape, props, fid, cutting_shape,
                    cutting_attr, original_geom_type):
-        inside = shape.intersection(cutting_shape)
-        outside = shape.difference(cutting_shape)
+        inside, outside = \
+            self.intersect_func(shape, cutting_shape)
 
         if cutting_attr is not None:
             inside_props = props.copy()
@@ -490,6 +495,111 @@ class _Cutter:
         self._add(inside, inside_props, fid,
                   original_geom_type)
         return outside
+
+# intersect by cutting, so that the cutting shape defines
+# a part of the shape which is inside and a part which is
+# outside as two separate shapes.
+def _intersect_cut(shape, cutting_shape):
+    inside = shape.intersection(cutting_shape)
+    outside = shape.difference(cutting_shape)
+    return inside, outside
+
+
+# intersect by looking at the overlap size. we can define
+# a cut-off fraction and if that fraction or more of the
+# area of the shape is within the cutting shape, it's
+# inside, else outside.
+#
+# this is done using a closure so that we can curry away
+# the fraction parameter.
+def _intersect_overlap(min_fraction):
+    # the inner function is what will actually get
+    # called, but closing over min_fraction means it
+    # will have access to that.
+    def _f(shape, cutting_shape):
+        overlap = shape.intersection(cutting_shape).area
+        area = shape.area
+
+        # need an empty shape of the same type as the
+        # original shape, which should be possible, as
+        # it seems shapely geometries all have a default
+        # constructor to empty.
+        empty = type(shape)()
+
+        if ((area > 0) and
+            (overlap / area) >= min_fraction):
+            return shape, empty
+        else:
+            return empty, shape
+    return _f
+
+
+# find a layer by iterating through all the layers. this
+# would be easier if they layers were in a dict(), but
+# that's a pretty invasive change.
+#
+# returns None if the layer can't be found.
+def _find_layer(feature_layers, name):
+
+    for feature_layer in feature_layers:
+        layer_datum = feature_layer['layer_datum']
+        layer_name = layer_datum['name']
+
+        if layer_name == name:
+            return feature_layer
+
+    return None
+
+
+# shared implementation of the intercut algorithm, used
+# both when cutting shapes and using overlap to determine
+# inside / outsideness.
+def _intercut_impl(intersect_func, feature_layers,
+                   base_layer, cutting_layer, attribute,
+                   target_attribute, cutting_attrs,
+                   keep_geom_type):
+    # the target attribute can default to the attribute if
+    # they are distinct. but often they aren't, and that's
+    # why target_attribute is a separate parameter.
+    if target_attribute is None:
+        target_attribute = attribute
+
+    # search through all the layers and extract the ones
+    # which have the names of the base and cutting layer.
+    # it would seem to be better to use a dict() for
+    # layers, and this will give odd results if names are
+    # allowed to be duplicated.
+    base = _find_layer(feature_layers, base_layer)
+    cutting = _find_layer(feature_layers, cutting_layer)
+
+    # base or cutting layer not available. this could happen
+    # because of a config problem, in which case you'd want
+    # it to be reported. but also can happen when the client
+    # selects a subset of layers which don't include either
+    # the base or the cutting layer. then it's not an error.
+    # the interesting case is when they select the base but
+    # not the cutting layer...
+    if base is None or cutting is None:
+        return None
+
+    base_features = base['features']
+    cutting_features = cutting['features']
+
+    # make a cutter object to help out
+    cutter = _Cutter(cutting_features, cutting_attrs,
+                     attribute, target_attribute,
+                     keep_geom_type, intersect_func)
+
+    for base_feature in base_features:
+        # we use shape to track the current remainder of the
+        # shape after subtracting bits which are inside cuts.
+        shape, props, fid = base_feature
+
+        cutter.cut(shape, props, fid)
+
+    base['features'] = cutter.new_features
+
+    return base
 
 
 # intercut takes features from a base layer and cuts each
@@ -531,39 +641,6 @@ def intercut(feature_layers, base_layer, cutting_layer,
              attribute, target_attribute=None,
              cutting_attrs=None,
              keep_geom_type=True):
-    base = None
-    cutting = None
-
-    # the target attribute can default to the attribute if
-    # they are distinct. but often they aren't, and that's
-    # why target_attribute is a separate parameter.
-    if target_attribute is None:
-        target_attribute = attribute
-
-    # search through all the layers and extract the ones
-    # which have the names of the base and cutting layer.
-    # it would seem to be better to use a dict() for
-    # layers, and this will give odd results if names are
-    # allowed to be duplicated.
-    for feature_layer in feature_layers:
-        layer_datum = feature_layer['layer_datum']
-        layer_name = layer_datum['name']
-
-        if layer_name == base_layer:
-            base = feature_layer
-        elif layer_name == cutting_layer:
-            cutting = feature_layer
-
-    # base or cutting layer not available. this could happen
-    # because of a config problem, in which case you'd want
-    # it to be reported. but also can happen when the client
-    # selects a subset of layers which don't include either
-    # the base or the cutting layer. then it's not an error.
-    # the interesting case is when they select the base but
-    # not the cutting layer...
-    if base is None or cutting is None:
-        return None
-
     # sanity check on the availability of the cutting
     # attribute.
     assert attribute is not None, \
@@ -571,24 +648,41 @@ def intercut(feature_layers, base_layer, cutting_layer,
         'should have been an attribute name. Perhaps check ' + \
         'your configuration file and queries.'
 
-    base_features = base['features']
-    cutting_features = cutting['features']
+    return _intercut_impl(_intersect_cut, feature_layers,
+        base_layer, cutting_layer, attribute,
+        target_attribute, cutting_attrs, keep_geom_type)
 
-    # make a cutter object to help out
-    cutter = _Cutter(cutting_features, cutting_attrs,
-                     attribute, target_attribute,
-                     keep_geom_type)
 
-    for base_feature in base_features:
-        # we use shape to track the current remainder of the
-        # shape after subtracting bits which are inside cuts.
-        shape, props, fid = base_feature
+# overlap measures the area overlap between each feature in
+# the base layer and each in the cutting layer. if the
+# fraction of overlap is greater than the min_fraction
+# constant, then the feature in the base layer is assigned
+# a property with its value derived from the overlapping
+# feature from the cutting layer.
+#
+# the intended use of this is to project attributes from one
+# layer to another so that they can be styled appropriately.
+#
+# it has the same parameters as intercut, see above.
+#
+# returns a feature layer which is the base layer with
+# overlapping features having attributes projected from the
+# cutting layer.
+def overlap(feature_layers, base_layer, cutting_layer,
+            attribute, target_attribute=None,
+            cutting_attrs=None,
+            keep_geom_type=True,
+            min_fraction=0.8):
+    # sanity check on the availability of the cutting
+    # attribute.
+    assert attribute is not None, \
+        'Parameter attribute to overlap was None, but ' + \
+        'should have been an attribute name. Perhaps check ' + \
+        'your configuration file and queries.'
 
-        cutter.cut(shape, props, fid)
-
-    base['features'] = cutter.new_features
-
-    return base
+    return _intercut_impl(_intersect_overlap(min_fraction),
+        feature_layers, base_layer, cutting_layer, attribute,
+        target_attribute, cutting_attrs, keep_geom_type)
 
 
 # explicit order for some kinds of landuse
