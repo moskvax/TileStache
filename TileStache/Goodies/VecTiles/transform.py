@@ -674,8 +674,6 @@ def _make_new_properties(props, props_instructions):
         else:
             new_props[k] = v
 
-    print "Got %s properties, %s instructions => %s" % (repr(props), repr(props_instructions), repr(new_props))
-
     return new_props
 
 def exterior_boundaries(feature_layers, base_layer,
@@ -761,7 +759,6 @@ def exterior_boundaries(feature_layers, base_layer,
     if new_layer_name is None:
         # no new layer requested, instead add new
         # features into the same layer.
-        print "Adding %d new features to %s" % (len(new_features), repr(layer['name']))
         layer['features'].extend(new_features)
 
         return layer
