@@ -34,7 +34,7 @@ def _by_scalerank(feature):
 def _by_population(feature):
     wkb, properties, fid = feature
     default_value = -1000
-    population_flt = to_float(properties.get('population', default_value))
+    population_flt = to_float(properties.get('population'))
     if population_flt is not None:
         return int(population_flt)
     else:
