@@ -385,6 +385,63 @@ def tags_name_i18n(shape, properties, fid, zoom):
     return shape, properties, fid
 
 
+def _no_none_min(a, b):
+    """
+    Usually, `min(None, a)` will return None. This isn't
+    what we want, so this one will return a non-None
+    argument instead. This is basically the same as
+    treating None as greater than any other value.
+    """
+
+    if a is None:
+        return b
+    elif b is None:
+        return a
+    else:
+        return min(a, b)
+
+
+def _sorted_attributes(features, attrs, attribute):
+    """
+    When the list of attributes is a dictionary, use the
+    sort key parameter to order the feature attributes.
+    evaluate it as a function and return it. If it's not
+    in the right format, attrs isn't a dict then returns
+    None.
+    """
+
+    sort_key = attrs.get('sort_key')
+    reverse = attrs.get('reverse')
+
+    assert sort_key is not None, "Configuration " + \
+        "parameter 'sort_key' is missing, please " + \
+        "check yout configuration."
+
+    # first, we find the _minimum_ ordering over the
+    # group of key values. this is because we only do
+    # the intersection in groups by the cutting
+    # attribute, so can only sort in accordance with
+    # that.
+    group = dict()
+    for feature in features:
+        val = feature[1].get(sort_key)
+        key = feature[1].get(attribute)
+        val = _no_none_min(val, group.get(key))
+        group[key] = val
+
+    # extract the sorted list of attributes from the
+    # grouped (attribute, order) pairs, ordering by
+    # the order.
+    all_attrs = sorted(group.iteritems(),
+        key=lambda x: x[1])
+
+    # if we wanted the sort reversed, then reverse it
+    if reverse:
+        all_attrs = reversed(all_attrs)
+
+    # strip out the sort key in return
+    return [x[0] for x in all_attrs]
+
 # creates a list of indexes, each one for a different cut
 # attribute value, in priority order.
 #
@@ -416,6 +473,12 @@ class _Cutter:
             for feature in features:
                 all_attrs.add(feature[1].get(attribute))
             attrs = list(all_attrs)
+
+        # alternatively, the user can specify an ordering
+        # function over the attributes.
+        elif isinstance(attrs, dict):
+            attrs = _sorted_attributes(features, attrs,
+                                       attribute)
 
         cut_idxs = list()
         for attr in attrs:
