@@ -415,7 +415,7 @@ def _sorted_attributes(features, attrs, attribute):
 
     assert sort_key is not None, "Configuration " + \
         "parameter 'sort_key' is missing, please " + \
-        "check yout configuration."
+        "check your configuration."
 
     # first, we find the _minimum_ ordering over the
     # group of key values. this is because we only do
@@ -433,11 +433,7 @@ def _sorted_attributes(features, attrs, attribute):
     # grouped (attribute, order) pairs, ordering by
     # the order.
     all_attrs = sorted(group.iteritems(),
-        key=lambda x: x[1])
-
-    # if we wanted the sort reversed, then reverse it
-    if reverse:
-        all_attrs = reversed(all_attrs)
+        key=lambda x: x[1], reverse=bool(reverse))
 
     # strip out the sort key in return
     return [x[0] for x in all_attrs]
