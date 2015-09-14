@@ -696,7 +696,7 @@ def _intercut_impl(intersect_func, feature_layers,
 #
 # returns a feature layer which is the base layer cut by the
 # cutting layer.
-def intercut(feature_layers, base_layer, cutting_layer,
+def intercut(feature_layers, zoom, base_layer, cutting_layer,
              attribute, target_attribute=None,
              cutting_attrs=None,
              keep_geom_type=True):
@@ -727,7 +727,7 @@ def intercut(feature_layers, base_layer, cutting_layer,
 # returns a feature layer which is the base layer with
 # overlapping features having attributes projected from the
 # cutting layer.
-def overlap(feature_layers, base_layer, cutting_layer,
+def overlap(feature_layers, zoom, base_layer, cutting_layer,
             attribute, target_attribute=None,
             cutting_attrs=None,
             keep_geom_type=True,
@@ -912,10 +912,12 @@ def _make_new_properties(props, props_instructions):
 
     return new_props
 
-def exterior_boundaries(feature_layers, base_layer,
+def exterior_boundaries(feature_layers, zoom,
+                        base_layer,
                         new_layer_name=None,
                         prop_transform=dict(),
-                        buffer_size=None):
+                        buffer_size=None,
+                        start_zoom=None):
     """
     create new fetures from the boundaries of polygons
     in the base layer, subtracting any sections of the
@@ -942,6 +944,10 @@ def exterior_boundaries(feature_layers, base_layer,
     polygons will be ignored.
     """
     layer = None
+
+    # don't start processing until the start zoom
+    if zoom < start_zoom:
+        return layer
 
     # search through all the layers and extract the one
     # which has the name of the base layer we were given
