@@ -917,7 +917,7 @@ def exterior_boundaries(feature_layers, zoom,
                         new_layer_name=None,
                         prop_transform=dict(),
                         buffer_size=None,
-                        start_zoom=None):
+                        start_zoom=0):
     """
     create new fetures from the boundaries of polygons
     in the base layer, subtracting any sections of the
