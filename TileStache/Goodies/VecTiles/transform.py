@@ -971,8 +971,8 @@ def exterior_boundaries(feature_layers, zoom,
     # create an index so that we can efficiently find the
     # polygons intersecting the 'current' one. Note that
     # we're only interested in intersecting with other
-    # areal features, and that intersecting with lines can
-    # give some unexpected results.
+    # polygonal features, and that intersecting with lines
+    # can give some unexpected results.
     indexable_features = list()
     for shape, props, fid in features:
         if shape.geom_type in ('Polygon', 'MultiPolygon'):
