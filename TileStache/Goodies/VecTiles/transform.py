@@ -505,11 +505,11 @@ class _Cutter:
                         shape, props, fid, cutting_shape,
                         cutting_attr, original_geom_type)
 
-            # if there's no geometry left outside the
-            # shape, then we can exit the loop early, as
-            # nothing else will intersect.
-            if shape.is_empty:
-                break
+                # if there's no geometry left outside the
+                # shape, then we can exit the function
+                # early, as nothing else will intersect.
+                if shape.is_empty:
+                    return
 
         # if there's still geometry left outside, then it
         # keeps the old, unaltered properties.
