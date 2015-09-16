@@ -374,7 +374,9 @@ def tags_name_i18n(shape, properties, fid, zoom):
         if (k.startswith('name:') and v != name or
                 k.startswith('alt_name:') and v != name or
                 k.startswith('alt_name_') and v != name or
-                k.startswith('old_name:') and v != name):
+                k.startswith('old_name:') and v != name or
+                k.startswith('left:name:') and v != name or
+                k.startswith('right:name:') and v != name):
             properties[k] = v
 
     for alt_tag_name_candidate in tag_name_alternates:
