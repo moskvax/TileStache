@@ -473,8 +473,8 @@ _GEOMETRY_DIMENSIONS = {
 #   4: contains a polygon / two-dimensional object
 def _geom_dimensions(g):
     dim = _GEOMETRY_DIMENSIONS.get(g.geom_type)
-    assert dim, "Unknown geometry type %s in " + \
-        "transform._geom_dimensions." % \
+    assert dim is not None, "Unknown geometry type " + \
+        "%s in transform._geom_dimensions." % \
         repr(g.geom_type)
 
     # recurse for geometry collections to find the true
@@ -567,21 +567,21 @@ class _Cutter:
     # same as the original, or we're not trying to keep the
     # same type.
     def _add(self, shape, props, fid, original_geom_dim):
+        # don't add empty shapes, they're completely
+        # useless.
+        if shape.is_empty:
+            return
+
         # use a custom dimension measurement here, as it
         # turns out shapely geometry objects don't always
         # form a hierarchy that's usable with isinstance.
         shape_dim = _geom_dimensions(shape)
 
-        # don't add empty shapes, they're completely
-        # useless.
-        if shape.is_empty:
-            pass
-
         # add the shape as-is unless we're trying to keep
         # the geometry type or the geometry dimension is
         # identical.
-        elif not self.keep_geom_type or \
-             shape_dim == original_geom_dim:
+        if not self.keep_geom_type or \
+           shape_dim == original_geom_dim:
             self.new_features.append((shape, props, fid))
 
 
