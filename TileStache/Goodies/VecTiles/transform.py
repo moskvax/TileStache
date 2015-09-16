@@ -438,6 +438,53 @@ def _sorted_attributes(features, attrs, attribute):
     # strip out the sort key in return
     return [x[0] for x in all_attrs]
 
+
+# the table of geometry dimensions indexed by geometry
+# type name. it would be better to use geometry type ID,
+# but it seems like that isn't exposed.
+#
+# each of these is a bit-mask, so zero dimentions is
+# represented by 1, one by 2, etc... this is to support
+# things like geometry collections where the type isn't
+# statically known.
+_GEOMETRY_DIMENSIONS = {
+    'Point':              1,
+    'LineString':         2,
+    'LinearRing':         2,
+    'Polygon':            4,
+    'MultiPoint':         1,
+    'MultiLineString':    2,
+    'MultiPolygon':       4,
+    'GeometryCollection': 0,
+}
+
+
+# returns the dimensionality of the object. so points have
+# zero dimensions, lines one, polygons two. multi* variants
+# have the same as their singular variant.
+#
+# geometry collections can hold many different types, so
+# we use a bit-mask of the dimensions and recurse down to
+# find the actual dimensionality of the stored set.
+#
+# returns a bit-mask, with these bits ORed together:
+#   1: contains a point / zero-dimensional object
+#   2: contains a linestring / one-dimensional object
+#   4: contains a polygon / two-dimensional object
+def _geom_dimensions(g):
+    dim = _GEOMETRY_DIMENSIONS.get(g.geom_type)
+    assert dim, "Unknown geometry type %s in " + \
+        "transform._geom_dimensions." % \
+        repr(g.geom_type)
+
+    # recurse for geometry collections to find the true
+    # dimensionality of the geometry.
+    if dim == 0:
+        for part in g.geoms:
+            dim = dim | _geom_dimensions(g)
+
+    return dim
+
 # creates a list of indexes, each one for a different cut
 # attribute value, in priority order.
 #
@@ -494,7 +541,7 @@ class _Cutter:
     # of the shape. adds all the selected bits to the
     # new_features list.
     def cut(self, shape, props, fid):
-        original_geom_type = type(shape)
+        original_geom_dim = _geom_dimensions(shape)
 
         for cutting_attr, cut_idx in self.cut_idxs:
             cutting_shapes = cut_idx.query(shape)
@@ -503,7 +550,7 @@ class _Cutter:
                 if cutting_shape.intersects(shape):
                     shape = self._intersect(
                         shape, props, fid, cutting_shape,
-                        cutting_attr, original_geom_type)
+                        cutting_attr, original_geom_dim)
 
                 # if there's no geometry left outside the
                 # shape, then we can exit the function
@@ -513,26 +560,29 @@ class _Cutter:
 
         # if there's still geometry left outside, then it
         # keeps the old, unaltered properties.
-        self._add(shape, props, fid, original_geom_type)
+        self._add(shape, props, fid, original_geom_dim)
 
 
     # only keep geometries where either the type is the
     # same as the original, or we're not trying to keep the
     # same type.
-    def _add(self, shape, props, fid, original_geom_type):
-        if (not shape.is_empty and
-            (not self.keep_geom_type or
-             isinstance(shape, original_geom_type))):
-            self.new_features.append((shape, props, fid))
+    def _add(self, shape, props, fid, original_geom_dim):
+        # use a custom dimension measurement here, as it
+        # turns out shapely geometry objects don't always
+        # form a hierarchy that's usable with isinstance.
+        shape_dim = _geom_dimensions(shape)
 
-        # if it's a multi-geometry, then split it up so
-        # that we can compare the types of the leaves.
-        # note that we compare the type first, just in
-        # case the original was a multi*.
-        elif isinstance(shape, BaseMultipartGeometry):
-            for geom in shape.geoms:
-                self._add(geom, props, fid,
-                          original_geom_type)
+        # don't add empty shapes, they're completely
+        # useless.
+        if shape.is_empty:
+            pass
+
+        # add the shape as-is unless we're trying to keep
+        # the geometry type or the geometry dimension is
+        # identical.
+        elif not self.keep_geom_type or \
+             shape_dim == original_geom_dim:
+            self.new_features.append((shape, props, fid))
 
 
     # intersects the shape with the cutting shape and
@@ -541,7 +591,7 @@ class _Cutter:
     # priority cutting shape already. the remainder is
     # returned.
     def _intersect(self, shape, props, fid, cutting_shape,
-                   cutting_attr, original_geom_type):
+                   cutting_attr, original_geom_dim):
         inside, outside = \
             self.intersect_func(shape, cutting_shape)
 
@@ -552,7 +602,7 @@ class _Cutter:
             inside_props = props
 
         self._add(inside, inside_props, fid,
-                  original_geom_type)
+                  original_geom_dim)
         return outside
 
 # intersect by cutting, so that the cutting shape defines
