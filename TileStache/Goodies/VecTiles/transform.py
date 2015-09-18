@@ -483,7 +483,7 @@ def _geom_dimensions(g):
     # dimensionality of the geometry.
     if dim == 0:
         for part in g.geoms:
-            dim = dim | _geom_dimensions(g)
+            dim = dim | _geom_dimensions(part)
 
     return dim
 
