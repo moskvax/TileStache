@@ -796,6 +796,48 @@ def overlap(feature_layers, zoom, base_layer, cutting_layer,
         target_attribute, cutting_attrs, keep_geom_type)
 
 
+# intracut cuts a layer with a set of features from that same
+# layer, which are then removed.
+#
+# for example, with water boundaries we get one set of linestrings
+# from the admin polygons and another set from the original ways
+# where the `maritime=yes` tag is set. we don't actually want
+# separate linestrings, we just want the `maritime=yes` attribute
+# on the first set of linestrings.
+def intracut(feature_layers, zoom, base_layer, attribute):
+    # sanity check on the availability of the cutting
+    # attribute.
+    assert attribute is not None, \
+        'Parameter attribute to intracut was None, but ' + \
+        'should have been an attribute name. Perhaps check ' + \
+        'your configuration file and queries.'
+
+    base = _find_layer(feature_layers, base_layer)
+    if base is None:
+        return None
+
+    # unlike intracut & overlap, which work on separate layers,
+    # intracut separates features in the same layer into
+    # different sets to work on.
+    base_features = list()
+    cutting_features = list()
+    for shape, props, fid in base['features']:
+        if attribute in props:
+            cutting_features.append((shape, props, fid))
+        else:
+            base_features.append((shape, props, fid))
+
+    cutter = _Cutter(cutting_features, None, attribute,
+                     attribute, True, _intersect_cut)
+
+    for shape, props, fid in base_features:
+        cutter.cut(shape, props, fid)
+
+    base['features'] = cutter.new_features
+
+    return base
+
+
 # map from old or deprecated kind value to the value that we want
 # it to be.
 _deprecated_landuse_kinds = {
