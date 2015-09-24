@@ -337,6 +337,16 @@ def place_ne_capital(shape, properties, fid, zoom):
     return shape, properties, fid
 
 
+def water_tunnel(shape, properties, fid, zoom):
+    tunnel = properties.get('tunnel')
+    if tunnel in ('yes', 'true'):
+        properties['is_tunnel'] = 'yes'
+    else:
+        properties.pop('is_tunnel', None)
+    properties.pop('tunnel', None)
+    return shape, properties, fid
+
+
 def tags_create_dict(shape, properties, fid, zoom):
     tags_hstore = properties.get('tags')
     if tags_hstore:
