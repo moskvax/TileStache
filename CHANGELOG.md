@@ -1,3 +1,15 @@
+v0.3.0
+------
+* Add intracut (intersection) algorithm for cutting within layers.
+* Add smarts for dealing with maritime boundary attributes
+* Add tranform for water `tunnel`s
+
+0.0.2
+-----
+* Stable
+
+--------------------------------------------------------------------------------
+
 Pre-fork changelog
 ------------------
 
