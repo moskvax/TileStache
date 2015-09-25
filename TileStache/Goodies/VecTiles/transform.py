@@ -338,12 +338,11 @@ def place_ne_capital(shape, properties, fid, zoom):
 
 
 def water_tunnel(shape, properties, fid, zoom):
-    tunnel = properties.get('tunnel')
-    if tunnel in ('yes', 'true'):
-        properties['is_tunnel'] = 'yes'
-    else:
+    tunnel = properties.pop('tunnel', None)
+    if tunnel in (None, 'no', 'false', '0'):
         properties.pop('is_tunnel', None)
-    properties.pop('tunnel', None)
+    else:
+        properties['is_tunnel'] = 'yes'
     return shape, properties, fid
 
 
