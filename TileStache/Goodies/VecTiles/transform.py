@@ -346,6 +346,30 @@ def water_tunnel(shape, properties, fid, zoom):
     return shape, properties, fid
 
 
+boundary_admin_level_mapping = {
+    2: 'country',
+    4: 'state',
+    6: 'county',
+}
+
+
+def boundary_kind(shape, properties, fid, zoom):
+    kind = properties.get('kind')
+    if kind:
+        return shape, properties, fid
+    admin_level_str = properties.get('admin_level')
+    if admin_level_str is None:
+        return shape, properties, fid
+    try:
+        admin_level_int = int(admin_level_str)
+    except ValueError:
+        return shape, properties, fid
+    kind = boundary_admin_level_mapping.get(admin_level_int)
+    if kind:
+        properties['kind'] = kind
+    return shape, properties, fid
+
+
 def tags_create_dict(shape, properties, fid, zoom):
     tags_hstore = properties.get('tags')
     if tags_hstore:
