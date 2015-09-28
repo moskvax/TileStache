@@ -350,6 +350,7 @@ boundary_admin_level_mapping = {
     2: 'country',
     4: 'state',
     6: 'county',
+    8: 'municipality',
 }
 
 
