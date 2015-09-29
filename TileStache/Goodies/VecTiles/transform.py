@@ -5,6 +5,9 @@ from StreetNames import short_street_name
 from collections import defaultdict
 from shapely.strtree import STRtree
 from shapely.geometry.base import BaseMultipartGeometry
+from shapely.geometry.polygon import orient
+from shapely.ops import linemerge
+from shapely.geometry.multilinestring import MultiLineString
 import re
 
 
@@ -1153,3 +1156,271 @@ def exterior_boundaries(feature_layers, zoom,
         new_layer['name'] = new_layer_name
 
         return new_layer
+
+
+def _inject_key(key, infix):
+    """
+    OSM keys often have several parts, separated by ':'s.
+    When we merge properties from the left and right of a
+    boundary, we want to preserve information like the
+    left and right names, but prefer the form "name:left"
+    rather than "left:name", so we have to insert an
+    infix string to these ':'-delimited arrays.
+
+    >>> _inject_key('a:b:c', 'x')
+    'a:x:b:c'
+    >>> _inject_key('a', 'x')
+    'a:x'
+
+    """
+    parts = key.split(':')
+    parts.insert(1, infix)
+    return ':'.join(parts)
+
+
+def _merge_left_right_props(lprops, rprops):
+    """
+    Given a set of properties to the left and right of a
+    boundary, we want to keep as many of these as possible,
+    but keeping them all might be a bit too much.
+
+    So we want to keep the key-value pairs which are the
+    same in both in the output, but merge the ones which
+    are different by infixing them with 'left' and 'right'.
+
+    >>> _merge_left_right_props({}, {})
+    {}
+    >>> _merge_left_right_props({'a':1}, {})
+    {'a:left': 1}
+    >>> _merge_left_right_props({}, {'b':2})
+    {'b:right': 2}
+    >>> _merge_left_right_props({'a':1, 'c':3}, {'b':2, 'c':3})
+    {'a:left': 1, 'c': 3, 'b:right': 2}
+    >>> _merge_left_right_props({'a':1},{'a':2})
+    {'a:left': 1, 'a:right': 2}
+    """
+    keys = set(lprops.keys()) | set(rprops.keys())
+    new_props = dict()
+
+    # props in both are copied directly if they're the same
+    # in both the left and right. they get left/right
+    # inserted after the first ':' if they're different.
+    for k in keys:
+        lv = lprops.get(k)
+        rv = rprops.get(k)
+
+        if lv == rv:
+            new_props[k] = lv
+        else:
+            if lv is not None:
+                new_props[_inject_key(k, 'left')] = lv
+            if rv is not None:
+                new_props[_inject_key(k, 'right')] = rv
+
+    return new_props
+
+
+def _make_joined_name(props):
+    """
+    Updates the argument to contain a 'name' element
+    generated from joining the left and right names.
+
+    Just to make it easier for people, we generate a name
+    which is easy to display of the form "LEFT - RIGHT".
+    The individual properties are available if the user
+    wants to generate a more complex name.
+
+    >>> x = {}
+    >>> _make_joined_name(x)
+    >>> x
+    {}
+
+    >>> x = {'name:left':'Left'}
+    >>> _make_joined_name(x)
+    >>> x
+    {'name': 'Left', 'name:left': 'Left'}
+
+    >>> x = {'name:right':'Right'}
+    >>> _make_joined_name(x)
+    >>> x
+    {'name': 'Right', 'name:right': 'Right'}
+
+    >>> x = {'name:left':'Left', 'name:right':'Right'}
+    >>> _make_joined_name(x)
+    >>> x
+    {'name:right': 'Right', 'name': 'Left - Right', 'name:left': 'Left'}
+
+    >>> x = {'name:left':'Left', 'name:right':'Right', 'name': 'Already Exists'}
+    >>> _make_joined_name(x)
+    >>> x
+    {'name:right': 'Right', 'name': 'Already Exists', 'name:left': 'Left'}
+    """
+
+    # don't overwrite an existing name
+    if 'name' in props:
+        return
+
+    lname = props.get('name:left')
+    rname = props.get('name:right')
+
+    if lname is not None:
+        if rname is not None:
+            props['name'] = "%s - %s" % (lname, rname)
+        else:
+            props['name'] = lname
+    elif rname is not None:
+        props['name'] = rname
+
+
+def _linemerge(geom):
+    """
+    Try to extract all the linear features from the geometry argument
+    and merge them all together into the smallest set of linestrings
+    possible.
+
+    This is almost identical to Shapely's linemerge, and uses it,
+    except that Shapely's throws exceptions when passed a single
+    linestring, or a geometry collection with lines and points in it.
+    So this can be thought of as a "safer" wrapper around Shapely's
+    function.
+    """
+    geom_type = geom.type
+
+    if geom_type == 'GeometryCollection':
+        # collect together everything line-like from the
+        # geometry collection
+        lines = map(_linemerge, geom.geoms)
+
+        # filter out anything that's empty
+        lines = filter(lambda g: not g.is_empty, lines)
+
+        if len(lines) == 0:
+            return MultiLineString([])
+        else:
+            return linemerge(lines)
+
+    elif geom_type == 'LineString':
+        return geom
+
+    elif geom_type == 'MultiLineString':
+        return linemerge(geom)
+
+    else:
+        return MultiLineString([])
+
+
+def admin_boundaries(feature_layers, zoom, base_layer,
+                     start_zoom=0):
+    """
+    Given a layer with admin polygons and maritime boundaries,
+    attempts to output a set of oriented boundaries with properties
+    from both the left and right polygon, and also cut with the
+    maritime information to provide a `maritime_boundary=yes` value
+    where there's overlap between the maritime lines and the
+    polygon boundaries.
+    """
+
+    layer = None
+
+    # don't start processing until the start zoom
+    if zoom < start_zoom:
+        return layer
+
+    layer = _find_layer(feature_layers, base_layer)
+    if layer is None:
+        return None
+
+    # layer will have polygonal features for the admin
+    # polygons and also linear features for the maritime
+    # boundaries. further, we want to group the admin
+    # polygons by their kind, as this will reduce the
+    # working set.
+    admin_features = defaultdict(list)
+    maritime_shapes = list()
+    new_features = list()
+
+    for shape, props, fid in layer['features']:
+        dims = _geom_dimensions(shape)
+        kind = props.get('kind')
+        maritime_boundary = props.get('maritime_boundary')
+
+        # note: dims=4 means polygon, as it's a bit set of
+        # 1 << num_dimensions. likewise, dims=2 means a
+        # linestring. the reason to use this rather than
+        # compare the string of types is to catch the
+        # "multi-" types as well.
+        if dims == 4 and kind is not None:
+            admin_features[kind].append((shape, props, fid))
+
+        elif dims == 2 and maritime_boundary == 'yes':
+            maritime_shapes.append(shape)
+
+    # there are separate polygons for each admin level, and
+    # we only want to intersect like with like because it
+    # makes more sense to have Country-Country and
+    # State-State boundaries (and labels) rather than the
+    # (combinatoric) set of all different levels.
+    for kind, features in admin_features.iteritems():
+        num_features = len(features)
+        envelopes = map(lambda g: g[0].envelope, features)
+
+        for i, feature in enumerate(features):
+            shape, props, fid = feature
+            envelope = envelopes[i]
+
+            # orient to ensure that the shape is to the
+            # left of the boundary.
+            boundary = orient(shape).boundary
+
+            # intersect with *preceding* features to remove
+            # those boundary parts. this ensures that there
+            # are no duplicate parts.
+            for j in range(0, i):
+                cut_shape, cut_props, cut_fid = features[j]
+                cut_envelope = envelopes[j]
+                if envelope.intersects(cut_envelope):
+                    boundary = _intersect_cut(boundary, cut_shape)[1]
+
+                if boundary.is_empty:
+                    break
+
+            # intersect with every *later* feature. now each
+            # intersection represents a section of boundary
+            # that we want to keep.
+            for j in range(i+1, num_features):
+                cut_shape, cut_props, cut_fid = features[j]
+                cut_envelope = envelopes[j]
+
+                if envelope.intersects(cut_envelope):
+                    inside, boundary = _intersect_cut(boundary, cut_shape)
+
+                    inside = _linemerge(inside)
+                    if not inside.is_empty:
+                        new_props = _merge_left_right_props(props, cut_props)
+                        new_props['id'] = props['id']
+                        _make_joined_name(new_props)
+                        new_features.append((inside, new_props, fid))
+
+                if boundary.is_empty:
+                    break
+
+            # anything left over at the end is still a boundary,
+            # but a one-sided boundary to international waters.
+            boundary = _linemerge(boundary)
+            if not boundary.is_empty:
+                new_props = props.copy()
+                _make_joined_name(new_props)
+                new_features.append((boundary, new_props, fid))
+
+
+    # use intracut for maritime
+    maritime_shape = _linemerge(MultiLineString(maritime_shapes))
+    maritime_boundaries = [(maritime_shape, {'maritime_boundary': 'yes'}, 0)]
+    cutter = _Cutter(maritime_boundaries, None,
+                     'maritime_boundary', 'maritime_boundary',
+                     2, _intersect_cut)
+    for shape, props, fid in new_features:
+        cutter.cut(shape, props, fid)
+
+    layer['features'] = cutter.new_features
+    return layer
