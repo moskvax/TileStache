@@ -1131,31 +1131,31 @@ def exterior_boundaries(feature_layers, zoom,
         return new_layer
 
 
-def generate_label_layer(feature_layers, zoom, source_layer=None,
-                         new_layer_name=None):
-    assert source_layer, 'generate_label_layer: missing source_layer'
-    assert new_layer_name, 'generate_label_layer: missing new_layer_name'
+def generate_label_features(feature_layers, zoom, source_layer=None,
+                            label_property_name=None,
+                            label_property_value=None):
+    assert source_layer, 'generate_label_features: missing source_layer'
 
     layer = _find_layer(feature_layers, source_layer)
     if layer is None:
         return None
 
-    label_features = []
+    new_features = []
     for feature in layer['features']:
         shape, properties, fid = feature
+
         # shapely does the right thing for all kinds of geometries
         # it also has a function `representative_point` which we might
         # want to consider using too
         label_centroid = shape.centroid
         label_properties = properties.copy()
+        if label_property_name:
+            label_properties[label_property_name] = label_property_value
         label_feature = label_centroid, label_properties, fid
-        label_features.append(label_feature)
 
-    label_layer_datum = layer['layer_datum'].copy()
-    label_layer_datum['name'] = new_layer_name
-    label_feature_layer = dict(
-        name=new_layer_name,
-        features=label_features,
-        layer_datum=label_layer_datum,
-    )
-    return label_feature_layer
+        # add the original feature and then the label
+        new_features.append(feature)
+        new_features.append(label_feature)
+
+    layer['features'] = new_features
+    return layer
