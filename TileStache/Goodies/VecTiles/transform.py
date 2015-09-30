@@ -1296,7 +1296,7 @@ def _linemerge(geom):
             if not line.is_empty:
                 lines.append(line)
 
-        return linemerge(lines) if lines else  MultiLineString([])
+        return linemerge(lines) if lines else MultiLineString([])
 
     elif geom_type == 'LineString':
         return geom
