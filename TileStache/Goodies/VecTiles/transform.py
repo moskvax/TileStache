@@ -1336,7 +1336,7 @@ def admin_boundaries(feature_layers, zoom, base_layer,
     # polygons by their kind, as this will reduce the
     # working set.
     admin_features = defaultdict(list)
-    maritime_shapes = list()
+    maritime_features = list()
     new_features = list()
 
     for shape, props, fid in layer['features']:
@@ -1352,8 +1352,8 @@ def admin_boundaries(feature_layers, zoom, base_layer,
         if dims == 4 and kind is not None:
             admin_features[kind].append((shape, props, fid))
 
-        elif dims == 2 and maritime_boundary == 'yes':
-            maritime_shapes.append(shape)
+        elif dims == 4 and maritime_boundary == 'yes':
+            maritime_features.append((shape, {'maritime_boundary':'no'}, 0))
 
     # there are separate polygons for each admin level, and
     # we only want to intersect like with like because it
@@ -1413,14 +1413,23 @@ def admin_boundaries(feature_layers, zoom, base_layer,
                 new_features.append((boundary, new_props, fid))
 
 
-    # use intracut for maritime
-    maritime_shape = _linemerge(MultiLineString(maritime_shapes))
-    maritime_boundaries = [(maritime_shape, {'maritime_boundary': 'yes'}, 0)]
-    cutter = _Cutter(maritime_boundaries, None,
+    # use intracut for maritime, but it intersects in a positive
+    # way - it sets the tag on anything which intersects, whereas
+    # we want to set maritime where it _doesn't_ intersect. so
+    # we have to flip the attribute afterwards.
+    cutter = _Cutter(maritime_features, None,
                      'maritime_boundary', 'maritime_boundary',
                      2, _intersect_cut)
+
     for shape, props, fid in new_features:
         cutter.cut(shape, props, fid)
+
+    # flip the property, so define maritime_boundary=yes where
+    # it was previously unset and remove maritime_boundary=no.
+    for shape, props, fid in cutter.new_features:
+        maritime_boundary = props.pop('maritime_boundary', None)
+        if maritime_boundary is None:
+            props['maritime_boundary'] = 'yes'
 
     layer['features'] = cutter.new_features
     return layer
