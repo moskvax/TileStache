@@ -1300,7 +1300,7 @@ def _linemerge(geom):
         # collect together everything line-like from the geometry
         # collection and filter out anything that's empty
         lines = []
-        for line in g.geoms:
+        for line in geom.geoms:
             line = _linemerge(line)
             if not line.is_empty:
                 lines.append(line)
