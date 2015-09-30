@@ -1455,9 +1455,13 @@ def generate_label_features(
     for feature in layer['features']:
         shape, properties, fid = feature
 
-        # shapely does the right thing for all kinds of geometries
-        # it also has a function `representative_point` which we might
-        # want to consider using too
+        # We only want to create label features for polygonal
+        # geometries
+        if shape.geom_type not in ('Polygon', 'MultiPolygon'):
+            continue
+
+        # shapely also has a function `representative_point` which we
+        # might want to consider using here
         label_centroid = shape.centroid
         label_properties = properties.copy()
         if label_property_name:
