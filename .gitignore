@@ -12,3 +12,4 @@ TileStache-*.*.tar.gz
 *.shx
 .coverage
 .idea/
+.DS_Store

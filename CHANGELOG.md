@@ -1,3 +1,18 @@
+v0.3.0
+------
+* Add intracut (intersection) algorithm for cutting within layers.
+* Add smarts for dealing with maritime boundary attributes
+* Add tranform for water `tunnel`s
+
+0.0.2
+-----
+* Stable
+
+--------------------------------------------------------------------------------
+
+Pre-fork changelog
+------------------
+
 2014-05-10: 1.49.10
 - Fixed Travis build.
 - Fixed import errors for case-insensitive filesystems.
