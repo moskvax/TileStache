@@ -1378,7 +1378,7 @@ def admin_boundaries(feature_layers, zoom, base_layer,
                 cut_shape, cut_props, cut_fid = features[j]
                 cut_envelope = envelopes[j]
                 if envelope.intersects(cut_envelope):
-                    boundary = _intersect_cut(boundary, cut_shape)[1]
+                    boundary = boundary.difference(cut_shape)
 
                 if boundary.is_empty:
                     break
