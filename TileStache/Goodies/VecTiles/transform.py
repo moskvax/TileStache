@@ -1349,15 +1349,13 @@ def admin_boundaries(feature_layers, zoom, base_layer,
         kind = props.get('kind')
         maritime_boundary = props.get('maritime_boundary')
 
-        # note: dims=4 means polygon, as it's a bit set of
-        # 1 << num_dimensions. likewise, dims=2 means a
-        # linestring. the reason to use this rather than
-        # compare the string of types is to catch the
-        # "multi-" types as well.
-        if dims == 4 and kind is not None:
+        # the reason to use this rather than compare the
+        # string of types is to catch the "multi-" types
+        # as well.
+        if dims == _POLYGON_DIMENSION and kind is not None:
             admin_features[kind].append((shape, props, fid))
 
-        elif dims == 4 and maritime_boundary == 'yes':
+        elif dims == _POLYGON_DIMENSION and maritime_boundary == 'yes':
             maritime_features.append((shape, {'maritime_boundary':'no'}, 0))
 
     # there are separate polygons for each admin level, and
