@@ -154,10 +154,11 @@ def remove_feature_id(shape, properties, fid, zoom):
 
 
 def building_kind(shape, properties, fid, zoom):
+    kind = properties.get('kind')
+    if kind:
+        return shape, properties, fid
     building = _coalesce(properties, 'building:part', 'building')
-    if properties.kind:
-        kind = properties.kind
-    elif building and building != 'yes':
+    if building and building != 'yes':
         kind = building
     else:
         kind = _coalesce(properties, 'amenity', 'shop', 'tourism')
