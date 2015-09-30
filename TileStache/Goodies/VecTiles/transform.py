@@ -1288,17 +1288,15 @@ def _linemerge(geom):
     geom_type = geom.type
 
     if geom_type == 'GeometryCollection':
-        # collect together everything line-like from the
-        # geometry collection
-        lines = map(_linemerge, geom.geoms)
+        # collect together everything line-like from the geometry
+        # collection and filter out anything that's empty
+        lines = []
+        for line in g.geoms:
+            line = _linemerge(line)
+            if not line.is_empty:
+                lines.append(line)
 
-        # filter out anything that's empty
-        lines = filter(lambda g: not g.is_empty, lines)
-
-        if len(lines) == 0:
-            return MultiLineString([])
-        else:
-            return linemerge(lines)
+        return linemerge(lines) if lines else  MultiLineString([])
 
     elif geom_type == 'LineString':
         return geom
@@ -1363,7 +1361,7 @@ def admin_boundaries(feature_layers, zoom, base_layer,
     # (combinatoric) set of all different levels.
     for kind, features in admin_features.iteritems():
         num_features = len(features)
-        envelopes = map(lambda g: g[0].envelope, features)
+        envelopes = [g[0].envelope for g in features]
 
         for i, feature in enumerate(features):
             shape, props, fid = feature
