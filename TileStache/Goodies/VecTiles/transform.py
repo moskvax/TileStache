@@ -1441,9 +1441,10 @@ def admin_boundaries(feature_layers, zoom, base_layer,
     return layer
 
 
-def generate_label_features(feature_layers, zoom, source_layer=None,
-                            label_property_name=None,
-                            label_property_value=None):
+def generate_label_features(
+        feature_layers, zoom, source_layer=None, label_property_name=None,
+        label_property_value=None, new_layer_name=None):
+
     assert source_layer, 'generate_label_features: missing source_layer'
 
     layer = _find_layer(feature_layers, source_layer)
@@ -1463,9 +1464,21 @@ def generate_label_features(feature_layers, zoom, source_layer=None,
             label_properties[label_property_name] = label_property_value
         label_feature = label_centroid, label_properties, fid
 
-        # add the original feature and then the label
-        new_features.append(feature)
+        # if we're adding these features to a new layer, don't add the
+        # original features
+        if new_layer_name is None:
+            new_features.append(feature)
         new_features.append(label_feature)
 
-    layer['features'] = new_features
-    return layer
+    if new_layer_name is None:
+        layer['features'] = new_features
+        return layer
+    else:
+        label_layer_datum = layer['layer_datum'].copy()
+        label_layer_datum['name'] = new_layer_name
+        label_feature_layer = dict(
+            name=new_layer_name,
+            features=new_features,
+            layer_datum=label_layer_datum,
+        )
+        return label_feature_layer
