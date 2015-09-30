@@ -486,15 +486,21 @@ def _sorted_attributes(features, attrs, attribute):
 # represented by 1, one by 2, etc... this is to support
 # things like geometry collections where the type isn't
 # statically known.
+_NULL_DIMENSION         = 0
+_POINT_DIMENSION        = 1
+_LINE_DIMENSION         = 2
+_POLYGON_DIMENSION      = 4
+
+
 _GEOMETRY_DIMENSIONS = {
-    'Point':              1,
-    'LineString':         2,
-    'LinearRing':         2,
-    'Polygon':            4,
-    'MultiPoint':         1,
-    'MultiLineString':    2,
-    'MultiPolygon':       4,
-    'GeometryCollection': 0,
+    'Point':              _POINT_DIMENSION,
+    'LineString':         _LINE_DIMENSION,
+    'LinearRing':         _LINE_DIMENSION,
+    'Polygon':            _POLYGON_DIMENSION,
+    'MultiPoint':         _POINT_DIMENSION,
+    'MultiLineString':    _LINE_DIMENSION,
+    'MultiPolygon':       _POLYGON_DIMENSION,
+    'GeometryCollection': _NULL_DIMENSION,
 }
 
 
@@ -518,7 +524,7 @@ def _geom_dimensions(g):
 
     # recurse for geometry collections to find the true
     # dimensionality of the geometry.
-    if dim == 0:
+    if dim == _NULL_DIMENSION:
         for part in g.geoms:
             dim = dim | _geom_dimensions(part)
 
@@ -1418,7 +1424,7 @@ def admin_boundaries(feature_layers, zoom, base_layer,
     # we have to flip the attribute afterwards.
     cutter = _Cutter(maritime_features, None,
                      'maritime_boundary', 'maritime_boundary',
-                     2, _intersect_cut)
+                     _LINE_DIMENSION, _intersect_cut)
 
     for shape, props, fid in new_features:
         cutter.cut(shape, props, fid)
