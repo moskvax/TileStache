@@ -4,7 +4,6 @@ from numbers import Number
 from StreetNames import short_street_name
 from collections import defaultdict
 from shapely.strtree import STRtree
-from shapely.geometry.base import BaseMultipartGeometry
 from shapely.geometry.polygon import orient
 from shapely.ops import linemerge
 from shapely.geometry.multilinestring import MultiLineString
