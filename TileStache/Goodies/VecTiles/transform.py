@@ -1054,7 +1054,7 @@ def _make_new_properties(props, props_instructions):
 def exterior_boundaries(feature_layers, zoom,
                         base_layer,
                         new_layer_name=None,
-                        prop_transform=dict(),
+                        prop_transform=None,
                         buffer_size=None,
                         start_zoom=0):
     """
@@ -1104,6 +1104,9 @@ def exterior_boundaries(feature_layers, zoom,
     # an empty result.
     if layer is None:
         return None
+
+    if prop_transform is None:
+        prop_transform = {}
 
     features = layer['features']
 
