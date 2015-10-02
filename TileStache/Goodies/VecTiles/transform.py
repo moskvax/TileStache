@@ -232,6 +232,8 @@ def road_classifier(shape, properties, fid, zoom):
 
 
 def road_sort_key(shape, properties, fid, zoom):
+    # Note! parse_layer_as_float must be run before this filter.
+
     # Calculated sort value is in the range 0 to 39
     sort_val = 0
 
@@ -271,20 +273,20 @@ def road_sort_key(shape, properties, fid, zoom):
               (railway == 'subway' and tunnel not in ('no', 'false'))):
             sort_val -= 10
 
-        # Explicit layer is clipped to [-5, 5] range
+        # Explicit layer is clipped to [-5, 5] range. Note that
+        # the layer, if present, will be a Float due to the
+        # parse_layer_as_float filter.
         layer = properties.get('layer')
-        if layer:
-            layer_float = to_float(layer)
-            if layer_float is not None:
-                layer_float = max(min(layer_float, 5), -5)
-                # The range of values from above is [5, 34]
-                # For positive layer values, we want the range to be:
-                # [34, 39]
-                if layer_float > 0:
-                    sort_val = int(layer_float + 34)
-                # For negative layer values, [0, 5]
-                elif layer_float < 0:
-                    sort_val = int(layer_float + 5)
+        if layer is not None:
+            layer = max(min(layer, 5), -5)
+            # The range of values from above is [5, 34]
+            # For positive layer values, we want the range to be:
+            # [34, 39]
+            if layer > 0:
+                sort_val = int(layer + 34)
+            # For negative layer values, [0, 5]
+            elif layer < 0:
+                sort_val = int(layer + 5)
 
     properties['sort_key'] = sort_val
 
@@ -1491,3 +1493,22 @@ def generate_label_features(
             layer_datum=label_layer_datum,
         )
         return label_feature_layer
+
+
+def parse_layer_as_float(shape, properties, fid, zoom):
+    """
+    If the 'layer' property is present on a feature, then
+    this attempts to parse it as a floating point number.
+    The old value is removed and, if it could be parsed
+    as a floating point number, the number replaces the
+    original property.
+    """
+
+    layer = properties.pop('layer', None)
+
+    if layer:
+        layer_float = to_float(layer)
+        if layer_float is not None:
+            properties['layer'] = layer_float
+
+    return shape, properties, fid
