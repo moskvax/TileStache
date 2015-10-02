@@ -368,6 +368,15 @@ def boundary_kind(shape, properties, fid, zoom):
     kind = properties.get('kind')
     if kind:
         return shape, properties, fid
+
+    # if the boundary is tagged as being that of a first nations
+    # state then skip the rest of the kind logic, regardless of
+    # the admin_level (see mapzen/vector-datasource#284).
+    boundary_type = properties.get('boundary_type')
+    if boundary_type == 'aboriginal_lands':
+        properties['kind'] = 'aboriginal_lands'
+        return shape, properties, fid
+
     admin_level_str = properties.get('admin_level')
     if admin_level_str is None:
         return shape, properties, fid
@@ -378,6 +387,13 @@ def boundary_kind(shape, properties, fid, zoom):
     kind = boundary_admin_level_mapping.get(admin_level_int)
     if kind:
         properties['kind'] = kind
+    return shape, properties, fid
+
+
+def boundary_trim_properties(shape, properties, fid, zoom):
+    properties = _remove_properties(
+        properties,
+        'boundary_type')
     return shape, properties, fid
 
 
