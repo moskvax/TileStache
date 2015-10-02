@@ -133,6 +133,9 @@ def _road_kind(properties):
     railway = properties.get('railway')
     if railway in road_kind_rail:
         return 'rail'
+    route = properties.get('route')
+    if route == 'ferry':
+        return 'ferry'
     return 'minor_road'
 
 
