@@ -273,18 +273,16 @@ def road_sort_key(shape, properties, fid, zoom):
 
         # Explicit layer is clipped to [-5, 5] range
         layer = properties.get('layer')
-        if layer:
-            layer_float = to_float(layer)
-            if layer_float is not None:
-                layer_float = max(min(layer_float, 5), -5)
-                # The range of values from above is [5, 34]
-                # For positive layer values, we want the range to be:
-                # [34, 39]
-                if layer_float > 0:
-                    sort_val = int(layer_float + 34)
-                # For negative layer values, [0, 5]
-                elif layer_float < 0:
-                    sort_val = int(layer_float + 5)
+        if layer is not None:
+            layer = max(min(layer, 5), -5)
+            # The range of values from above is [5, 34]
+            # For positive layer values, we want the range to be:
+            # [34, 39]
+            if layer > 0:
+                sort_val = int(layer + 34)
+            # For negative layer values, [0, 5]
+            elif layer < 0:
+                sort_val = int(layer + 5)
 
     properties['sort_key'] = sort_val
 
@@ -1491,3 +1489,22 @@ def generate_label_features(
             layer_datum=label_layer_datum,
         )
         return label_feature_layer
+
+
+def parse_layer_as_float(shape, properties, fid, zoom):
+    """
+    If the 'layer' property is present on a feature, then
+    this attempts to parse it as a floating point number.
+    The old value is removed and, if it could be parsed
+    as a floating point number, the number replaces the
+    original property.
+    """
+
+    layer = properties.pop('layer', None)
+
+    if layer:
+        layer_float = to_float(layer)
+        if layer_float is not None:
+            properties['layer'] = layer_float
+
+    return shape, properties, fid
