@@ -232,6 +232,8 @@ def road_classifier(shape, properties, fid, zoom):
 
 
 def road_sort_key(shape, properties, fid, zoom):
+    # Note! parse_layer_as_float must be run before this filter.
+
     # Calculated sort value is in the range 0 to 39
     sort_val = 0
 
@@ -271,7 +273,9 @@ def road_sort_key(shape, properties, fid, zoom):
               (railway == 'subway' and tunnel not in ('no', 'false'))):
             sort_val -= 10
 
-        # Explicit layer is clipped to [-5, 5] range
+        # Explicit layer is clipped to [-5, 5] range. Note that
+        # the layer, if present, will be a Float due to the
+        # parse_layer_as_float filter.
         layer = properties.get('layer')
         if layer is not None:
             layer = max(min(layer, 5), -5)
