@@ -1483,6 +1483,14 @@ def generate_label_features(
         if shape.geom_type not in ('Polygon', 'MultiPolygon'):
             continue
 
+        # Additionally, the feature needs to have a name or a sport
+        # tag, oherwise it's not really useful for labelling purposes
+        name = properties.get('name')
+        if not name:
+            sport = properties.get('sport')
+            if not sport:
+                continue
+
         # shapely also has a function `representative_point` which we
         # might want to consider using here
         label_centroid = shape.centroid
