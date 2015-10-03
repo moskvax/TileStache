@@ -1491,13 +1491,13 @@ def generate_label_features(
             if not sport:
                 continue
 
-        # shapely also has a function `representative_point` which we
-        # might want to consider using here
-        label_centroid = shape.centroid
+        label_point = shape.representative_point()
+
         label_properties = properties.copy()
         if label_property_name:
             label_properties[label_property_name] = label_property_value
-        label_feature = label_centroid, label_properties, fid
+
+        label_feature = label_point, label_properties, fid
 
         # if we're adding these features to a new layer, don't add the
         # original features
