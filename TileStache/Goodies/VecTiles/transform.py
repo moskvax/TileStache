@@ -1478,6 +1478,10 @@ def generate_label_features(
     for feature in layer['features']:
         shape, properties, fid = feature
 
+        # only add the original features if updating an existing layer
+        if new_layer_name is None:
+            new_features.append(feature)
+
         # We only want to create label features for polygonal
         # geometries
         if shape.geom_type not in ('Polygon', 'MultiPolygon'):
@@ -1499,10 +1503,6 @@ def generate_label_features(
 
         label_feature = label_point, label_properties, fid
 
-        # if we're adding these features to a new layer, don't add the
-        # original features
-        if new_layer_name is None:
-            new_features.append(feature)
         new_features.append(label_feature)
 
     if new_layer_name is None:
