@@ -7,6 +7,8 @@ from shapely.strtree import STRtree
 from shapely.geometry.polygon import orient
 from shapely.ops import linemerge
 from shapely.geometry.multilinestring import MultiLineString
+from shapely.geometry.multipolygon import MultiPolygon
+from shapely.geometry.collection import GeometryCollection
 import re
 
 
@@ -1340,6 +1342,47 @@ def _linemerge(geom):
         return MultiLineString([])
 
 
+def _orient(geom):
+    """
+    Given a shape, returns the counter-clockwise oriented
+    version. Does not affect points or lines.
+
+    This version is required because Shapely's version is
+    only defined for single polygons, and we want
+    something that works generically.
+
+    In the example below, note the change in order of the
+    coordinates in `p2`, which is initially not oriented
+    CCW.
+
+    >>> p1 = Polygon([[0, 0], [1, 0], [0, 1], [0, 0]])
+    >>> p2 = Polygon([[0, 1], [1, 1], [1, 0], [0, 1]])
+    >>> orient(p1).wkt
+    'POLYGON ((0 0, 1 0, 0 1, 0 0))'
+    >>> orient(p2).wkt
+    'POLYGON ((0 1, 1 0, 1 1, 0 1))'
+    >>> _orient(MultiPolygon([p1, p2])).wkt
+    'MULTIPOLYGON (((0 0, 1 0, 0 1, 0 0)), ((0 1, 1 0, 1 1, 0 1)))'
+    """
+
+    def oriented_multi(kind, geom):
+        oriented_geoms = [_orient(g) for g in geom.geoms]
+        return kind(oriented_geoms)
+
+    geom_type = geom.type
+
+    if geom_type == 'Polygon':
+        geom = orient(geom)
+
+    elif geom_type == 'MultiPolygon':
+        geom = oriented_multi(MultiPolygon, geom)
+
+    elif geom_type == 'GeometryCollection':
+        geom = oriented_multi(GeometryCollection, geom)
+
+    return geom
+
+
 def admin_boundaries(feature_layers, zoom, base_layer,
                      start_zoom=0):
     """
@@ -1399,7 +1442,7 @@ def admin_boundaries(feature_layers, zoom, base_layer,
 
             # orient to ensure that the shape is to the
             # left of the boundary.
-            boundary = orient(shape).boundary
+            boundary = _orient(shape).boundary
 
             # intersect with *preceding* features to remove
             # those boundary parts. this ensures that there
