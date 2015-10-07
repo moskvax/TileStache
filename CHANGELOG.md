@@ -1,3 +1,10 @@
+v0.4.0
+------
+* Add transform to dynamically create polygon `label_placement` features using representative point for existing layers (or exporte in new layer) as long as the input feature has a `name` or `sport` tag.
+* Ported PostGIS SQL logic from Vector Datasource to Python, with spatial intersection logic for `maritime` boundaries.
+* Use the input data's `kind` property when provided when determining building feature's kind.
+* Add `ferry` lines to high roads logic.
+
 v0.3.0
 ------
 * Add intracut (intersection) algorithm for cutting within layers.
