@@ -165,10 +165,11 @@ def building_kind(shape, properties, fid, zoom):
     if kind:
         return shape, properties, fid
     building = _coalesce(properties, 'building:part', 'building')
-    if building and building != 'yes':
-        kind = building
-    else:
-        kind = _coalesce(properties, 'amenity', 'shop', 'tourism')
+    if building:
+        if building != 'yes':
+            kind = building
+        else:
+            kind = 'building'
     if kind:
         properties['kind'] = kind
     return shape, properties, fid
@@ -199,7 +200,6 @@ def building_min_height(shape, properties, fid, zoom):
 def building_trim_properties(shape, properties, fid, zoom):
     properties = _remove_properties(
         properties,
-        'amenity', 'shop', 'tourism',
         'building', 'building:part',
         'building:levels', 'building:min_levels')
     return shape, properties, fid
@@ -1561,6 +1561,59 @@ def generate_label_features(
             layer_datum=label_layer_datum,
         )
         return label_feature_layer
+
+
+def generate_address_points(
+        feature_layers, zoom, source_layer=None):
+    """
+    Generates address points from building polygons where there is an
+    addr:housenumber tag on the building. Removes those tags from the
+    building.
+    """
+
+    assert source_layer, 'generate_label_features: missing source_layer'
+
+    layer = _find_layer(feature_layers, source_layer)
+    if layer is None:
+        return None
+
+    new_features = []
+    for feature in layer['features']:
+        shape, properties, fid = feature
+
+        # remove address tags on the original polygon,
+        # we only want them on the address point.
+        addr_housenumber = properties.pop('addr_housenumber', None)
+
+        # We only want to create address points for polygonal
+        # buildings with address tags.
+        if shape.geom_type not in ('Polygon', 'MultiPolygon') or \
+           addr_housenumber is None:
+            # keep the feature as-is, no modifications.
+            continue
+
+        label_point = shape.representative_point()
+
+        # we're only interested in a very few properties for
+        # address points.
+        label_properties = dict(
+            addr_housenumber=addr_housenumber,
+            kind='address')
+
+        source = properties.get('source')
+        if source is not None:
+            label_properties['source'] = source
+
+        addr_street = properties.pop('addr_street', None)
+        if addr_street is not None:
+            label_properties['addr_street'] = addr_street
+
+        label_feature = label_point, label_properties, fid
+
+        new_features.append(label_feature)
+
+    layer['features'].extend(new_features)
+    return layer
 
 
 def parse_layer_as_float(shape, properties, fid, zoom):
