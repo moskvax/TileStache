@@ -1386,12 +1386,17 @@ def _orient(geom):
 def admin_boundaries(feature_layers, zoom, base_layer,
                      start_zoom=0):
     """
-    Given a layer with admin polygons and maritime boundaries,
-    attempts to output a set of oriented boundaries with properties
-    from both the left and right polygon, and also cut with the
-    maritime information to provide a `maritime_boundary=yes` value
-    where there's overlap between the maritime lines and the
-    polygon boundaries.
+    Given a layer with admin boundaries and inclusion polygons for
+    land-based boundaries, attempts to output a set of oriented
+    boundaries with properties from both the left and right admin
+    boundary, and also cut with the maritime information to provide
+    a `maritime_boundary=yes` value where there's overlap between
+    the maritime lines and the admin boundaries.
+
+    Note that admin boundaries must alread be correctly oriented.
+    In other words, it must have a positive area and run counter-
+    clockwise around the polygon for which it is an outer (or
+    clockwise if it was an inner).
     """
 
     layer = None
@@ -1421,7 +1426,7 @@ def admin_boundaries(feature_layers, zoom, base_layer,
         # the reason to use this rather than compare the
         # string of types is to catch the "multi-" types
         # as well.
-        if dims == _POLYGON_DIMENSION and kind is not None:
+        if dims == _LINE_DIMENSION and kind is not None:
             admin_features[kind].append((shape, props, fid))
 
         elif dims == _POLYGON_DIMENSION and maritime_boundary == 'yes':
@@ -1437,12 +1442,8 @@ def admin_boundaries(feature_layers, zoom, base_layer,
         envelopes = [g[0].envelope for g in features]
 
         for i, feature in enumerate(features):
-            shape, props, fid = feature
+            boundary, props, fid = feature
             envelope = envelopes[i]
-
-            # orient to ensure that the shape is to the
-            # left of the boundary.
-            boundary = _orient(shape).boundary
 
             # intersect with *preceding* features to remove
             # those boundary parts. this ensures that there
