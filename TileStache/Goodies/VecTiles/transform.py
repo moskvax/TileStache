@@ -1571,7 +1571,7 @@ def generate_address_points(
     building.
     """
 
-    assert source_layer, 'generate_label_features: missing source_layer'
+    assert source_layer, 'generate_address_points: missing source_layer'
 
     if zoom < start_zoom:
         return None
@@ -1587,6 +1587,18 @@ def generate_address_points(
         # remove address tags on the original polygon,
         # we only want them on the address point.
         addr_housenumber = properties.pop('addr_housenumber', None)
+
+        # also consider it an address if the name of
+        # the building is just a number.
+        name = properties.get('name')
+        if name is not None and re.match('^[0-9-]+$', name):
+            if addr_housenumber is None:
+                addr_housenumber = properties.pop('name')
+
+            # and also suppress the name if it's the same as
+            # the address.
+            elif name == addr_housenumber:
+                properties.pop('name')
 
         # We only want to create address points for polygonal
         # buildings with address tags.
