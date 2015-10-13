@@ -1584,12 +1584,10 @@ def generate_address_points(
     for feature in layer['features']:
         shape, properties, fid = feature
 
-        # remove address tags on the original polygon,
-        # we only want them on the address point.
-        addr_housenumber = properties.pop('addr_housenumber', None)
+        addr_housenumber = properties.get('addr_housenumber')
 
-        # also consider it an address if the name of
-        # the building is just a number.
+        # consider it an address if the name of the building
+        # is just a number.
         name = properties.get('name')
         if name is not None and re.match('^[0-9-]+$', name):
             if addr_housenumber is None:
@@ -1607,6 +1605,10 @@ def generate_address_points(
             # keep the feature as-is, no modifications.
             continue
 
+        # remove address tags on the original polygon,
+        # we only want them on the address point.
+        properties.pop('addr_housenumber')
+
         label_point = shape.representative_point()
 
         # we're only interested in a very few properties for
@@ -1622,6 +1624,10 @@ def generate_address_points(
         addr_street = properties.pop('addr_street', None)
         if addr_street is not None:
             label_properties['addr_street'] = addr_street
+
+        oid = properties.get('id')
+        if oid is not None:
+            label_properties['id'] = oid
 
         label_feature = label_point, label_properties, fid
 
