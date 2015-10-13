@@ -1,3 +1,7 @@
+v0.4.1
+------
+* Make admin boundaries post-processing filter work with boundary linestring fragments rather than needing an oriented polygon.
+
 v0.4.0
 ------
 * Add transform to dynamically create polygon `label_placement` features using representative point for existing layers (or exporte in new layer) as long as the input feature has a `name` or `sport` tag.
