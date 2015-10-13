@@ -1564,7 +1564,7 @@ def generate_label_features(
 
 
 def generate_address_points(
-        feature_layers, zoom, source_layer=None):
+        feature_layers, zoom, source_layer=None, start_zoom=0):
     """
     Generates address points from building polygons where there is an
     addr:housenumber tag on the building. Removes those tags from the
@@ -1572,6 +1572,9 @@ def generate_address_points(
     """
 
     assert source_layer, 'generate_label_features: missing source_layer'
+
+    if zoom < start_zoom:
+        return None
 
     layer = _find_layer(feature_layers, source_layer)
     if layer is None:
