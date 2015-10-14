@@ -1605,10 +1605,6 @@ def generate_address_points(
             # keep the feature as-is, no modifications.
             continue
 
-        # remove address tags on the original polygon,
-        # we only want them on the address point.
-        properties.pop('addr_housenumber')
-
         label_point = shape.representative_point()
 
         # we're only interested in a very few properties for
