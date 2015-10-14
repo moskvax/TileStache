@@ -1617,7 +1617,7 @@ def generate_address_points(
         if source is not None:
             label_properties['source'] = source
 
-        addr_street = properties.pop('addr_street', None)
+        addr_street = properties.get('addr_street')
         if addr_street is not None:
             label_properties['addr_street'] = addr_street
 
