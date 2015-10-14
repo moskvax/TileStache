@@ -6,6 +6,7 @@ from collections import defaultdict
 from shapely.strtree import STRtree
 from shapely.geometry.polygon import orient
 from shapely.ops import linemerge
+from shapely.geometry.multipoint import MultiPoint
 from shapely.geometry.multilinestring import MultiLineString
 from shapely.geometry.multipolygon import MultiPolygon
 from shapely.geometry.collection import GeometryCollection
@@ -555,6 +556,111 @@ def _geom_dimensions(g):
 
     return dim
 
+
+def _flatten_geoms(shape):
+    """
+    Flatten a shape so that it is returned as a list
+    of single geometries.
+
+    >>> [g.wkt for g in _flatten_geoms(shapely.wkt.loads('GEOMETRYCOLLECTION (MULTIPOINT(-1 -1, 0 0), GEOMETRYCOLLECTION (POINT(1 1), POINT(2 2), GEOMETRYCOLLECTION (POINT(3 3))), LINESTRING(0 0, 1 1))'))]
+    ['POINT (-1 -1)', 'POINT (0 0)', 'POINT (1 1)', 'POINT (2 2)', 'POINT (3 3)', 'LINESTRING (0 0, 1 1)']
+    >>> _flatten_geoms(Polygon())
+    []
+    >>> _flatten_geoms(MultiPolygon())
+    []
+    """
+    if shape.geom_type.startswith('Multi'):
+        return shape.geoms
+
+    elif shape.is_empty:
+        return []
+
+    elif shape.type == 'GeometryCollection':
+        geoms = []
+
+        for g in shape.geoms:
+            geoms.extend(_flatten_geoms(g))
+
+        return geoms
+
+    else:
+        return [shape]
+
+
+def _filter_geom_types(shape, keep_dim):
+    """
+    Return a geometry which consists of the geometries in
+    the input shape filtered so that only those of the
+    given dimension remain. Collapses any structure (e.g:
+    of geometry collections) down to a single or multi-
+    geometry.
+
+    >>> _filter_geom_types(GeometryCollection(), _POINT_DIMENSION).wkt
+    'GEOMETRYCOLLECTION EMPTY'
+    >>> _filter_geom_types(Point(0,0), _POINT_DIMENSION).wkt
+    'POINT (0 0)'
+    >>> _filter_geom_types(Point(0,0), _LINE_DIMENSION).wkt
+    'GEOMETRYCOLLECTION EMPTY'
+    >>> _filter_geom_types(Point(0,0), _POLYGON_DIMENSION).wkt
+    'GEOMETRYCOLLECTION EMPTY'
+    >>> _filter_geom_types(LineString([(0,0),(1,1)]), _LINE_DIMENSION).wkt
+    'LINESTRING (0 0, 1 1)'
+    >>> _filter_geom_types(Polygon([(0,0),(1,1),(1,0),(0,0)],[]), _POLYGON_DIMENSION).wkt
+    'POLYGON ((0 0, 1 1, 1 0, 0 0))'
+    >>> _filter_geom_types(shapely.wkt.loads('GEOMETRYCOLLECTION (POINT(0 0), LINESTRING(0 0, 1 1))'), _POINT_DIMENSION).wkt
+    'POINT (0 0)'
+    >>> _filter_geom_types(shapely.wkt.loads('GEOMETRYCOLLECTION (POINT(0 0), LINESTRING(0 0, 1 1))'), _LINE_DIMENSION).wkt
+    'LINESTRING (0 0, 1 1)'
+    >>> _filter_geom_types(shapely.wkt.loads('GEOMETRYCOLLECTION (POINT(0 0), LINESTRING(0 0, 1 1))'), _POLYGON_DIMENSION).wkt
+    'GEOMETRYCOLLECTION EMPTY'
+    >>> _filter_geom_types(shapely.wkt.loads('GEOMETRYCOLLECTION (POINT(0 0), GEOMETRYCOLLECTION (POINT(1 1), LINESTRING(0 0, 1 1)))'), _POINT_DIMENSION).wkt
+    'MULTIPOINT (0 0, 1 1)'
+    >>> _filter_geom_types(shapely.wkt.loads('GEOMETRYCOLLECTION (MULTIPOINT(-1 -1, 0 0), GEOMETRYCOLLECTION (POINT(1 1), POINT(2 2), GEOMETRYCOLLECTION (POINT(3 3))), LINESTRING(0 0, 1 1))'), _POINT_DIMENSION).wkt
+    'MULTIPOINT (-1 -1, 0 0, 1 1, 2 2, 3 3)'
+    >>> _filter_geom_types(shapely.wkt.loads('GEOMETRYCOLLECTION (LINESTRING(-1 -1, 0 0), GEOMETRYCOLLECTION (LINESTRING(1 1, 2 2), GEOMETRYCOLLECTION (POINT(3 3))), LINESTRING(0 0, 1 1))'), _LINE_DIMENSION).wkt
+    'MULTILINESTRING ((-1 -1, 0 0), (1 1, 2 2), (0 0, 1 1))'
+    >>> _filter_geom_types(shapely.wkt.loads('GEOMETRYCOLLECTION (POLYGON((-2 -2, -2 2, 2 2, 2 -2, -2 -2)), GEOMETRYCOLLECTION (LINESTRING(1 1, 2 2), GEOMETRYCOLLECTION (POLYGON((3 3, 0 0, 1 0, 3 3)))), LINESTRING(0 0, 1 1))'), _POLYGON_DIMENSION).wkt
+    'MULTIPOLYGON (((-2 -2, -2 2, 2 2, 2 -2, -2 -2)), ((3 3, 0 0, 1 0, 3 3)))'
+    """
+
+    # flatten the geometries, and keep the parts with the
+    # dimension that we want. each item in the parts list
+    # should be a single (non-multi) geometry.
+    parts = []
+    for g in _flatten_geoms(shape):
+        if _geom_dimensions(g) == keep_dim:
+            parts.append(g)
+
+    if len(parts) == 0:
+        # the only way we can signal an empty geometry, as
+        # MultiPoint([]) throws an exception.
+        return GeometryCollection()
+
+    elif len(parts) == 1:
+        # return the singular geometry
+        return parts[0]
+
+    else:
+        # try to make a multi-geometry of the desirect type
+        if keep_dim == _POINT_DIMENSION:
+            # not sure why the MultiPoint constructor wants
+            # its coordinates differently from MultiPolygon
+            # and MultiLineString...
+            coords = []
+            for p in parts:
+                coords.extend(p.coords)
+            return MultiPoint(coords)
+
+        elif keep_dim == _LINE_DIMENSION:
+            return MultiLineString(parts)
+
+        elif keep_dim == _POLYGON_DIMENSION:
+            return MultiPolygon(parts)
+
+        else:
+            raise Exception("Unknown dimension %d in _filter_geom_types" % keep_dim)
+
+
 # creates a list of indexes, each one for a different cut
 # attribute value, in priority order.
 #
@@ -637,22 +743,23 @@ class _Cutter:
     # same as the original, or we're not trying to keep the
     # same type.
     def _add(self, shape, props, fid, original_geom_dim):
+        # if keeping the same geometry type, then filter
+        # out anything that's different.
+        if self.keep_geom_type:
+            shape = _filter_geom_types(
+                shape, original_geom_dim)
+
         # don't add empty shapes, they're completely
-        # useless.
+        # useless. the previous step may also have created
+        # an empty geometry if there weren't any items of
+        # the type we're looking for.
         if shape.is_empty:
             return
-
-        # use a custom dimension measurement here, as it
-        # turns out shapely geometry objects don't always
-        # form a hierarchy that's usable with isinstance.
-        shape_dim = _geom_dimensions(shape)
 
         # add the shape as-is unless we're trying to keep
         # the geometry type or the geometry dimension is
         # identical.
-        if not self.keep_geom_type or \
-           shape_dim == original_geom_dim:
-            self.new_features.append((shape, props, fid))
+        self.new_features.append((shape, props, fid))
 
 
     # intersects the shape with the cutting shape and
