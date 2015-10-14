@@ -1650,3 +1650,52 @@ def parse_layer_as_float(shape, properties, fid, zoom):
             properties['layer'] = layer_float
 
     return shape, properties, fid
+
+
+def drop_features_where(
+        feature_layers, zoom, source_layer=None, start_zoom=0,
+        property_name=None, drop_property=True,
+        geom_types=None):
+    """
+    Drops some features entirely when they have a property
+    named `property_name` and its value is true. Also can
+    drop the property if `drop_property` is truthy. If
+    `geom_types` is present and not None, then only types in
+    that list are considered for dropping.
+
+    This is useful for dropping features which we want to use
+    earlier in the pipeline (e.g: to generate points), but
+    that we don't want to appear in the final output.
+    """
+
+    assert source_layer, 'drop_features_where: missing source layer'
+    assert property_name, 'drop_features_where: missing property name'
+
+    if zoom < start_zoom:
+        return None
+
+    layer = _find_layer(feature_layers, source_layer)
+    if layer is None:
+        return None
+
+    new_features = []
+    for feature in layer['features']:
+        shape, properties, fid = feature
+
+        matches_geom_type = \
+            geom_types is None or \
+            shape.geom_type in geom_types
+
+        val = None
+        if drop_property:
+            val = properties.pop(property_name, None)
+        else:
+            val = properties.get(property_name)
+
+        if val == True and matches_geom_type:
+            pass
+        else:
+            new_features.append((shape, properties, fid))
+
+    layer['features'] = new_features
+    return layer
