@@ -1832,7 +1832,7 @@ def remove_zero_area(shape, properties, fid, zoom):
     # try to parse a string if the area has been sent as a
     # string. it should come through as a float, though,
     # since postgres treats it as a real.
-    if isinstance(area, str):
+    if isinstance(area, (str, unicode)):
         area = to_float(area)
 
     if area is not None:
