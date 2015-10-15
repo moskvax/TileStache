@@ -1773,7 +1773,8 @@ def drop_features_where(
         geom_types=None):
     """
     Drops some features entirely when they have a property
-    named `property_name` and its value is true. Also can
+    named `property_name` and its value is true. Note that it
+    must be identically True, not just truthy. Also can
     drop the property if `drop_property` is truthy. If
     `geom_types` is present and not None, then only types in
     that list are considered for dropping.
@@ -1801,16 +1802,21 @@ def drop_features_where(
             geom_types is None or \
             shape.geom_type in geom_types
 
-        val = None
+        # figure out what to do with the property - do we
+        # want to drop it, or just fetch it?
+        func = properties.get
         if drop_property:
-            val = properties.pop(property_name, None)
-        else:
-            val = properties.get(property_name)
+            func = properties.drop
 
+        val = func(property_name, None)
+
+        # skip (i.e: drop) the geometry if the value is
+        # true and it's the geometry type we want.
         if val == True and matches_geom_type:
-            pass
-        else:
-            new_features.append((shape, properties, fid))
+            continue
+
+        # default case is to keep the feature
+        new_features.append((shape, properties, fid))
 
     layer['features'] = new_features
     return layer
