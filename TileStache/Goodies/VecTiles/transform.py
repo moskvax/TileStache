@@ -1806,3 +1806,33 @@ def drop_features_where(
 
     layer['features'] = new_features
     return layer
+
+
+def remove_zero_area(shape, properties, fid, zoom):
+    """
+    All features get a numeric area tag, but for points this
+    is zero. The area probably isn't exactly zero, so it's
+    probably less confusing to just remove the tag to show
+    that the value is probably closer to "unspecified".
+    """
+
+    # remove the property if it's present. we _only_ want
+    # to replace it if it matches the positive, float
+    # criteria.
+    area = properties.pop("area", None)
+
+    # try to parse a string if the area has been sent as a
+    # string. it should come through as a float, though,
+    # since postgres treats it as a real.
+    if isinstance(area, str):
+        area = to_float(area)
+
+    if area is not None:
+        # cast to integer to match what we do for polygons.
+        # also the fractional parts of a sq.m are just
+        # noise really.
+        area = int(area)
+        if area > 0:
+            properties['area'] = area
+
+    return shape, properties, fid
