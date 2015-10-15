@@ -643,7 +643,7 @@ def _filter_geom_types(shape, keep_dim):
         constructor = MultiPolygon
 
     else:
-        raise Exception("Unknown dimension %d in _filter_geom_types" % keep_dim)
+        raise ValueError("Unknown dimension %d in _filter_geom_types" % keep_dim)
 
     if len(parts) == 0:
         return constructor()
