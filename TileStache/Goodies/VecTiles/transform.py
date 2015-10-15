@@ -6,6 +6,7 @@ from collections import defaultdict
 from shapely.strtree import STRtree
 from shapely.geometry.polygon import orient
 from shapely.ops import linemerge
+from shapely.geometry.multipoint import MultiPoint
 from shapely.geometry.multilinestring import MultiLineString
 from shapely.geometry.multipolygon import MultiPolygon
 from shapely.geometry.collection import GeometryCollection
@@ -165,10 +166,11 @@ def building_kind(shape, properties, fid, zoom):
     if kind:
         return shape, properties, fid
     building = _coalesce(properties, 'building:part', 'building')
-    if building and building != 'yes':
-        kind = building
-    else:
-        kind = _coalesce(properties, 'amenity', 'shop', 'tourism')
+    if building:
+        if building != 'yes':
+            kind = building
+        else:
+            kind = 'building'
     if kind:
         properties['kind'] = kind
     return shape, properties, fid
@@ -199,7 +201,6 @@ def building_min_height(shape, properties, fid, zoom):
 def building_trim_properties(shape, properties, fid, zoom):
     properties = _remove_properties(
         properties,
-        'amenity', 'shop', 'tourism',
         'building', 'building:part',
         'building:levels', 'building:min_levels')
     return shape, properties, fid
@@ -555,6 +556,116 @@ def _geom_dimensions(g):
 
     return dim
 
+
+def _flatten_geoms(shape):
+    """
+    Flatten a shape so that it is returned as a list
+    of single geometries.
+
+    >>> [g.wkt for g in _flatten_geoms(shapely.wkt.loads('GEOMETRYCOLLECTION (MULTIPOINT(-1 -1, 0 0), GEOMETRYCOLLECTION (POINT(1 1), POINT(2 2), GEOMETRYCOLLECTION (POINT(3 3))), LINESTRING(0 0, 1 1))'))]
+    ['POINT (-1 -1)', 'POINT (0 0)', 'POINT (1 1)', 'POINT (2 2)', 'POINT (3 3)', 'LINESTRING (0 0, 1 1)']
+    >>> _flatten_geoms(Polygon())
+    []
+    >>> _flatten_geoms(MultiPolygon())
+    []
+    """
+    if shape.geom_type.startswith('Multi'):
+        return shape.geoms
+
+    elif shape.is_empty:
+        return []
+
+    elif shape.type == 'GeometryCollection':
+        geoms = []
+
+        for g in shape.geoms:
+            geoms.extend(_flatten_geoms(g))
+
+        return geoms
+
+    else:
+        return [shape]
+
+
+def _filter_geom_types(shape, keep_dim):
+    """
+    Return a geometry which consists of the geometries in
+    the input shape filtered so that only those of the
+    given dimension remain. Collapses any structure (e.g:
+    of geometry collections) down to a single or multi-
+    geometry.
+
+    >>> _filter_geom_types(GeometryCollection(), _POINT_DIMENSION).wkt
+    'GEOMETRYCOLLECTION EMPTY'
+    >>> _filter_geom_types(Point(0,0), _POINT_DIMENSION).wkt
+    'POINT (0 0)'
+    >>> _filter_geom_types(Point(0,0), _LINE_DIMENSION).wkt
+    'GEOMETRYCOLLECTION EMPTY'
+    >>> _filter_geom_types(Point(0,0), _POLYGON_DIMENSION).wkt
+    'GEOMETRYCOLLECTION EMPTY'
+    >>> _filter_geom_types(LineString([(0,0),(1,1)]), _LINE_DIMENSION).wkt
+    'LINESTRING (0 0, 1 1)'
+    >>> _filter_geom_types(Polygon([(0,0),(1,1),(1,0),(0,0)],[]), _POLYGON_DIMENSION).wkt
+    'POLYGON ((0 0, 1 1, 1 0, 0 0))'
+    >>> _filter_geom_types(shapely.wkt.loads('GEOMETRYCOLLECTION (POINT(0 0), LINESTRING(0 0, 1 1))'), _POINT_DIMENSION).wkt
+    'POINT (0 0)'
+    >>> _filter_geom_types(shapely.wkt.loads('GEOMETRYCOLLECTION (POINT(0 0), LINESTRING(0 0, 1 1))'), _LINE_DIMENSION).wkt
+    'LINESTRING (0 0, 1 1)'
+    >>> _filter_geom_types(shapely.wkt.loads('GEOMETRYCOLLECTION (POINT(0 0), LINESTRING(0 0, 1 1))'), _POLYGON_DIMENSION).wkt
+    'GEOMETRYCOLLECTION EMPTY'
+    >>> _filter_geom_types(shapely.wkt.loads('GEOMETRYCOLLECTION (POINT(0 0), GEOMETRYCOLLECTION (POINT(1 1), LINESTRING(0 0, 1 1)))'), _POINT_DIMENSION).wkt
+    'MULTIPOINT (0 0, 1 1)'
+    >>> _filter_geom_types(shapely.wkt.loads('GEOMETRYCOLLECTION (MULTIPOINT(-1 -1, 0 0), GEOMETRYCOLLECTION (POINT(1 1), POINT(2 2), GEOMETRYCOLLECTION (POINT(3 3))), LINESTRING(0 0, 1 1))'), _POINT_DIMENSION).wkt
+    'MULTIPOINT (-1 -1, 0 0, 1 1, 2 2, 3 3)'
+    >>> _filter_geom_types(shapely.wkt.loads('GEOMETRYCOLLECTION (LINESTRING(-1 -1, 0 0), GEOMETRYCOLLECTION (LINESTRING(1 1, 2 2), GEOMETRYCOLLECTION (POINT(3 3))), LINESTRING(0 0, 1 1))'), _LINE_DIMENSION).wkt
+    'MULTILINESTRING ((-1 -1, 0 0), (1 1, 2 2), (0 0, 1 1))'
+    >>> _filter_geom_types(shapely.wkt.loads('GEOMETRYCOLLECTION (POLYGON((-2 -2, -2 2, 2 2, 2 -2, -2 -2)), GEOMETRYCOLLECTION (LINESTRING(1 1, 2 2), GEOMETRYCOLLECTION (POLYGON((3 3, 0 0, 1 0, 3 3)))), LINESTRING(0 0, 1 1))'), _POLYGON_DIMENSION).wkt
+    'MULTIPOLYGON (((-2 -2, -2 2, 2 2, 2 -2, -2 -2)), ((3 3, 0 0, 1 0, 3 3)))'
+    """
+
+    # flatten the geometries, and keep the parts with the
+    # dimension that we want. each item in the parts list
+    # should be a single (non-multi) geometry.
+    parts = []
+    for g in _flatten_geoms(shape):
+        if _geom_dimensions(g) == keep_dim:
+            parts.append(g)
+
+    # figure out how to construct a multi-geometry of the
+    # dimension wanted.
+    if keep_dim == _POINT_DIMENSION:
+        constructor = MultiPoint
+
+    elif keep_dim == _LINE_DIMENSION:
+        constructor = MultiLineString
+
+    elif keep_dim == _POLYGON_DIMENSION:
+        constructor = MultiPolygon
+
+    else:
+        raise ValueError("Unknown dimension %d in _filter_geom_types" % keep_dim)
+
+    if len(parts) == 0:
+        return constructor()
+
+    elif len(parts) == 1:
+        # return the singular geometry
+        return parts[0]
+
+    else:
+        if keep_dim == _POINT_DIMENSION:
+            # not sure why the MultiPoint constructor wants
+            # its coordinates differently from MultiPolygon
+            # and MultiLineString...
+            coords = []
+            for p in parts:
+                coords.extend(p.coords)
+            return MultiPoint(coords)
+
+        else:
+            return constructor(parts)
+
+
 # creates a list of indexes, each one for a different cut
 # attribute value, in priority order.
 #
@@ -637,22 +748,23 @@ class _Cutter:
     # same as the original, or we're not trying to keep the
     # same type.
     def _add(self, shape, props, fid, original_geom_dim):
+        # if keeping the same geometry type, then filter
+        # out anything that's different.
+        if self.keep_geom_type:
+            shape = _filter_geom_types(
+                shape, original_geom_dim)
+
         # don't add empty shapes, they're completely
-        # useless.
+        # useless. the previous step may also have created
+        # an empty geometry if there weren't any items of
+        # the type we're looking for.
         if shape.is_empty:
             return
-
-        # use a custom dimension measurement here, as it
-        # turns out shapely geometry objects don't always
-        # form a hierarchy that's usable with isinstance.
-        shape_dim = _geom_dimensions(shape)
 
         # add the shape as-is unless we're trying to keep
         # the geometry type or the geometry dimension is
         # identical.
-        if not self.keep_geom_type or \
-           shape_dim == original_geom_dim:
-            self.new_features.append((shape, props, fid))
+        self.new_features.append((shape, props, fid))
 
 
     # intersects the shape with the cutting shape and
@@ -1563,6 +1675,79 @@ def generate_label_features(
         return label_feature_layer
 
 
+def generate_address_points(
+        feature_layers, zoom, source_layer=None, start_zoom=0):
+    """
+    Generates address points from building polygons where there is an
+    addr:housenumber tag on the building. Removes those tags from the
+    building.
+    """
+
+    assert source_layer, 'generate_address_points: missing source_layer'
+
+    if zoom < start_zoom:
+        return None
+
+    layer = _find_layer(feature_layers, source_layer)
+    if layer is None:
+        return None
+
+    new_features = []
+    for feature in layer['features']:
+        shape, properties, fid = feature
+
+        # We only want to create address points for polygonal
+        # buildings with address tags.
+        if shape.geom_type not in ('Polygon', 'MultiPolygon'):
+            continue
+
+        addr_housenumber = properties.get('addr_housenumber')
+
+        # consider it an address if the name of the building
+        # is just a number.
+        name = properties.get('name')
+        if name is not None and re.match('^[0-9-]+$', name):
+            if addr_housenumber is None:
+                addr_housenumber = properties.pop('name')
+
+            # and also suppress the name if it's the same as
+            # the address.
+            elif name == addr_housenumber:
+                properties.pop('name')
+
+        # if there's no address, then keep the feature as-is,
+        # no modifications.
+        if addr_housenumber is None:
+            continue
+
+        label_point = shape.representative_point()
+
+        # we're only interested in a very few properties for
+        # address points.
+        label_properties = dict(
+            addr_housenumber=addr_housenumber,
+            kind='address')
+
+        source = properties.get('source')
+        if source is not None:
+            label_properties['source'] = source
+
+        addr_street = properties.get('addr_street')
+        if addr_street is not None:
+            label_properties['addr_street'] = addr_street
+
+        oid = properties.get('id')
+        if oid is not None:
+            label_properties['id'] = oid
+
+        label_feature = label_point, label_properties, fid
+
+        new_features.append(label_feature)
+
+    layer['features'].extend(new_features)
+    return layer
+
+
 def parse_layer_as_float(shape, properties, fid, zoom):
     """
     If the 'layer' property is present on a feature, then
@@ -1578,5 +1763,90 @@ def parse_layer_as_float(shape, properties, fid, zoom):
         layer_float = to_float(layer)
         if layer_float is not None:
             properties['layer'] = layer_float
+
+    return shape, properties, fid
+
+
+def drop_features_where(
+        feature_layers, zoom, source_layer=None, start_zoom=0,
+        property_name=None, drop_property=True,
+        geom_types=None):
+    """
+    Drops some features entirely when they have a property
+    named `property_name` and its value is true. Note that it
+    must be identically True, not just truthy. Also can
+    drop the property if `drop_property` is truthy. If
+    `geom_types` is present and not None, then only types in
+    that list are considered for dropping.
+
+    This is useful for dropping features which we want to use
+    earlier in the pipeline (e.g: to generate points), but
+    that we don't want to appear in the final output.
+    """
+
+    assert source_layer, 'drop_features_where: missing source layer'
+    assert property_name, 'drop_features_where: missing property name'
+
+    if zoom < start_zoom:
+        return None
+
+    layer = _find_layer(feature_layers, source_layer)
+    if layer is None:
+        return None
+
+    new_features = []
+    for feature in layer['features']:
+        shape, properties, fid = feature
+
+        matches_geom_type = \
+            geom_types is None or \
+            shape.geom_type in geom_types
+
+        # figure out what to do with the property - do we
+        # want to drop it, or just fetch it?
+        func = properties.get
+        if drop_property:
+            func = properties.drop
+
+        val = func(property_name, None)
+
+        # skip (i.e: drop) the geometry if the value is
+        # true and it's the geometry type we want.
+        if val == True and matches_geom_type:
+            continue
+
+        # default case is to keep the feature
+        new_features.append((shape, properties, fid))
+
+    layer['features'] = new_features
+    return layer
+
+
+def remove_zero_area(shape, properties, fid, zoom):
+    """
+    All features get a numeric area tag, but for points this
+    is zero. The area probably isn't exactly zero, so it's
+    probably less confusing to just remove the tag to show
+    that the value is probably closer to "unspecified".
+    """
+
+    # remove the property if it's present. we _only_ want
+    # to replace it if it matches the positive, float
+    # criteria.
+    area = properties.pop("area", None)
+
+    # try to parse a string if the area has been sent as a
+    # string. it should come through as a float, though,
+    # since postgres treats it as a real.
+    if isinstance(area, (str, unicode)):
+        area = to_float(area)
+
+    if area is not None:
+        # cast to integer to match what we do for polygons.
+        # also the fractional parts of a sq.m are just
+        # noise really.
+        area = int(area)
+        if area > 0:
+            properties['area'] = area
 
     return shape, properties, fid
