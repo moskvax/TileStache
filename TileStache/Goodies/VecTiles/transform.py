@@ -631,17 +631,28 @@ def _filter_geom_types(shape, keep_dim):
         if _geom_dimensions(g) == keep_dim:
             parts.append(g)
 
+    # figure out how to construct a multi-geometry of the
+    # dimension wanted.
+    if keep_dim == _POINT_DIMENSION:
+        constructor = MultiPoint
+
+    elif keep_dim == _LINE_DIMENSION:
+        constructor = MultiLineString
+
+    elif keep_dim == _POLYGON_DIMENSION:
+        constructor = MultiPolygon
+
+    else:
+        raise Exception("Unknown dimension %d in _filter_geom_types" % keep_dim)
+
     if len(parts) == 0:
-        # the only way we can signal an empty geometry, as
-        # MultiPoint([]) throws an exception.
-        return GeometryCollection()
+        return constructor()
 
     elif len(parts) == 1:
         # return the singular geometry
         return parts[0]
 
     else:
-        # try to make a multi-geometry of the desirect type
         if keep_dim == _POINT_DIMENSION:
             # not sure why the MultiPoint constructor wants
             # its coordinates differently from MultiPolygon
@@ -651,14 +662,8 @@ def _filter_geom_types(shape, keep_dim):
                 coords.extend(p.coords)
             return MultiPoint(coords)
 
-        elif keep_dim == _LINE_DIMENSION:
-            return MultiLineString(parts)
-
-        elif keep_dim == _POLYGON_DIMENSION:
-            return MultiPolygon(parts)
-
         else:
-            raise Exception("Unknown dimension %d in _filter_geom_types" % keep_dim)
+            return constructor(parts)
 
 
 # creates a list of indexes, each one for a different cut
