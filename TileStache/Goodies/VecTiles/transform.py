@@ -1806,7 +1806,7 @@ def drop_features_where(
         # want to drop it, or just fetch it?
         func = properties.get
         if drop_property:
-            func = properties.drop
+            func = properties.pop
 
         val = func(property_name, None)
 
