@@ -1696,6 +1696,11 @@ def generate_address_points(
     for feature in layer['features']:
         shape, properties, fid = feature
 
+        # We only want to create address points for polygonal
+        # buildings with address tags.
+        if shape.geom_type not in ('Polygon', 'MultiPolygon'):
+            continue
+
         addr_housenumber = properties.get('addr_housenumber')
 
         # consider it an address if the name of the building
@@ -1710,11 +1715,9 @@ def generate_address_points(
             elif name == addr_housenumber:
                 properties.pop('name')
 
-        # We only want to create address points for polygonal
-        # buildings with address tags.
-        if shape.geom_type not in ('Polygon', 'MultiPolygon') or \
-           addr_housenumber is None:
-            # keep the feature as-is, no modifications.
+        # if there's no address, then keep the feature as-is,
+        # no modifications.
+        if addr_housenumber is None:
             continue
 
         label_point = shape.representative_point()
