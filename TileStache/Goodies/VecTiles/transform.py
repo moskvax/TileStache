@@ -1850,3 +1850,85 @@ def remove_zero_area(shape, properties, fid, zoom):
             properties['area'] = area
 
     return shape, properties, fid
+
+
+# circumference of the extent of the world in mercator "meters"
+_MERCATOR_CIRCUMFERENCE = 40075016.68
+
+
+def remove_duplicate_features(
+        feature_layers, zoom, source_layer=None, start_zoom=0,
+        property_keys=None, geometry_types=None, min_distance=0.0):
+    """
+    Removes duplicate features from the layer. The definition of
+    duplicate is anything which has the same values for the tuple
+    of values associated with the property_keys.
+
+    For example, if property_keys was ['name', 'kind'], then only
+    the first feature of those with the same value for the name
+    and kind properties would be kept in the output.
+    """
+
+    assert source_layer, 'remove_duplicate_features: missing source layer'
+
+    # note that the property keys or geometry types could be empty,
+    # but then this post-process filter would do nothing. so we
+    # assume that the user didn't intend this, or they wouldn't have
+    # included the filter in the first place.
+    assert property_keys, 'remove_duplicate_features: missing or empty property keys'
+    assert geometry_types, 'remove_duplicate_features: missing or empty geometry types'
+
+    if zoom < start_zoom:
+        return None
+
+    layer = _find_layer(feature_layers, source_layer)
+    if layer is None:
+        return None
+
+    # keep a set of the tuple of the property keys. this will tell
+    # us if the feature is unique while allowing us to maintain the
+    # sort order by only dropping later, presumably less important,
+    # features. we keep the geometry of the seen items too, so that
+    # we can tell if any new feature is significantly far enough
+    # away that it should be shown again.
+    seen_items = dict()
+
+    def meters_to_pixels(distance):
+        return distance * float(1 << (zoom + 8)) / 40075016.68
+
+    new_features = []
+    for feature in layer['features']:
+        shape, props, fid = feature
+
+        keep_feature = True
+        if shape.geom_type in geometry_types:
+            key = tuple([props.get(k) for k in property_keys])
+            seen_geoms = seen_items.get(key)
+
+            if seen_geoms is None:
+                # first time we've seen this item, so keep it in
+                # the output.
+                seen_items[key] = [shape]
+
+            else:
+                # if the distance is greater than the minimum set
+                # for this zoom, then we also keep it.
+                distance = min([shape.distance(s) for s in seen_geoms])
+
+                # correct for zoom - we want visual distance, which
+                # means (pseudo) pixels.
+                distance = meters_to_pixels(distance)
+
+                if distance > min_distance:
+                    # keep this geom to suppress any other labels
+                    # nearby.
+                    seen_geoms.append(shape)
+
+                else:
+                    keep_feature = False
+
+        if keep_feature:
+            new_features.append(feature)
+
+    layer['features'] = new_features
+    return layer
