@@ -17,6 +17,13 @@ import re
 feet_pattern = re.compile('([+-]?[0-9.]+)\'(?: *([+-]?[0-9.]+)")?')
 number_pattern = re.compile('([+-]?[0-9.]+)')
 
+# used to detect if the "name" of a building is
+# actually a house number.
+digits_pattern = re.compile('^[0-9-]+$')
+
+# used to detect station names which are followed by a
+# parenthetical list of line names.
+station_pattern = re.compile('([^(]*)\(([^)]*)\).*')
 
 def _to_float_meters(x):
     if x is None:
@@ -1693,7 +1700,7 @@ def generate_address_points(
         # consider it an address if the name of the building
         # is just a number.
         name = properties.get('name')
-        if name is not None and re.match('^[0-9-]+$', name):
+        if name is not None and digits_pattern.match(name):
             if addr_housenumber is None:
                 addr_housenumber = properties.pop('name')
 
@@ -1916,6 +1923,171 @@ def remove_duplicate_features(
 
         if keep_feature:
             new_features.append(feature)
+
+    layer['features'] = new_features
+    return layer
+
+
+def normalize_and_merge_duplicate_stations(
+        feature_layers, zoom, source_layer=None, start_zoom=0,
+        end_zoom=None):
+    """
+    Normalise station names by removing any parenthetical lines
+    lists at the end (e.g: "Foo St (A, C, E)"). Parse this and
+    use it to replace the `subway_lines` list if that is empty
+    or isn't present.
+
+    Use the name, now appropriately trimmed, to merge station
+    POIs together, unioning their subway lines.
+
+    Finally, re-sort the features in case the merging has caused
+    the subway stations to be out-of-order.
+    """
+
+    assert source_layer, 'normalize_and_merge_duplicate_stations: missing source layer'
+
+    if zoom < start_zoom:
+        return None
+
+    # we probably don't want to do this at higher zooms (e.g: 17 &
+    # 18), even if there are a bunch of stations very close
+    # together.
+    if end_zoom is not None and zoom > end_zoom:
+        return None
+
+    layer = _find_layer(feature_layers, source_layer)
+    if layer is None:
+        return None
+
+    seen_stations = {}
+    new_features = []
+    for feature in layer['features']:
+        shape, props, fid = feature
+
+        kind = props.get('kind')
+        name = props.get('name')
+        if name is not None and kind == 'station':
+            # this should match station names where the name is
+            # followed by a ()-bracketed list of line names. this
+            # is common in NYC, and we want to normalise by
+            # stripping these off and using it to provide the
+            # list of lines if we haven't already got that info.
+            m = station_pattern.match(name)
+
+            subway_lines = props.get('subway_lines', [])
+
+            if m:
+                # if the lines aren't present or are empty
+                if not subway_lines:
+                    lines = m.group(2).split(',')
+                    subway_lines = [x.strip() for x in lines]
+                    props['subway_lines'] = subway_lines
+
+                # update name so that it doesn't contain all the
+                # lines.
+                name = m.group(1).strip()
+                props['name'] = name
+
+            seen_idx = seen_stations.get(name)
+            if seen_idx is None:
+                seen_stations[name] = len(new_features)
+
+                # ensure that subway lines is present and is of
+                # list type for when we append to it later if we
+                # find a duplicate.
+                props['subway_lines'] = subway_lines
+                new_features.append(feature)
+
+            else:
+                # get the properties and append this duplicate's
+                # subway lines to the list on the original
+                # feature.
+                seen_props = new_features[seen_idx][1]
+
+                # make sure lines are unique
+                seen_subway_lines = set(seen_props['subway_lines'])
+                subway_lines = set(subway_lines)
+                subway_lines.update(seen_subway_lines)
+
+                seen_props['subway_lines'] = list(subway_lines)
+
+        else:
+            # not a station, or name is missing - we can't
+            # de-dup these.
+            new_features.append(feature)
+
+    # need to re-sort: removing duplicates would have changed
+    # the number of lines for each station.
+    sort_pois(new_features, zoom)
+
+    layer['features'] = new_features
+    return layer
+
+
+def _match_props(props, items_matching):
+    """
+    Checks if all the items in `items_matching` are also
+    present in `props`. If so, returns true. Otherwise
+    returns false.
+    """
+
+    for k, v in items_matching.iteritems():
+        if props.get(k) != v:
+            return False
+
+    return True
+
+
+def keep_n_features(
+        feature_layers, zoom, source_layer=None, start_zoom=0,
+        end_zoom=None, items_matching=None, max_items=None):
+    """
+    Keep only the first N features matching `items_matching`
+    in the layer. This is primarily useful for removing
+    features which are abundant in some places but scarce in
+    others. Rather than try to set some global threshold which
+    works well nowhere, instead sort appropriately and take a
+    number of features which is appropriate per-tile.
+
+    This is done by counting each feature which matches _all_
+    the key-value pairs in `items_matching` and, when the
+    count is larger than `max_items`, dropping those features.
+    """
+
+    assert source_layer, 'keep_n_features: missing source layer'
+
+    # leaving items_matching or max_items as None (or zero)
+    # would mean that this filter would do nothing, so assume
+    # that this is really a configuration error.
+    assert items_matching, 'keep_n_features: missing or empty item match dict'
+    assert max_items, 'keep_n_features: missing or zero max number of items'
+
+    if zoom < start_zoom:
+        return None
+
+    # we probably don't want to do this at higher zooms (e.g: 17 &
+    # 18), even if there are a bunch of stations very close
+    # together.
+    if end_zoom is not None and zoom > end_zoom:
+        return None
+
+    layer = _find_layer(feature_layers, source_layer)
+    if layer is None:
+        return None
+
+    count = 0
+    new_features = []
+    for shape, props, fid in layer['features']:
+        keep_feature = True
+
+        if _match_props(props, items_matching):
+            count += 1
+            if count > max_items:
+                keep_feature = False
+
+        if keep_feature:
+            new_features.append((shape, props, fid))
+
 
     layer['features'] = new_features
     return layer
