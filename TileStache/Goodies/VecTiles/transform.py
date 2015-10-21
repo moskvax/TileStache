@@ -11,6 +11,7 @@ from shapely.geometry.multilinestring import MultiLineString
 from shapely.geometry.multipolygon import MultiPolygon
 from shapely.geometry.collection import GeometryCollection
 from util import to_float
+from sort import pois as sort_pois
 import re
 
 
@@ -2088,6 +2089,39 @@ def keep_n_features(
         if keep_feature:
             new_features.append((shape, props, fid))
 
-
     layer['features'] = new_features
+    return layer
+
+
+def rank_features(
+        feature_layers, zoom, source_layer=None, start_zoom=0,
+        items_matching=None, rank_key=None):
+    """
+    Enumerate the features matching `items_matching` and insert
+    the rank as a property with the key `rank_key`. This is
+    useful for the client, so that it can selectively display
+    only the top features, or de-emphasise the later features.
+    """
+
+    assert source_layer, 'rank_features: missing source layer'
+
+    # leaving items_matching or rank_key as None would mean
+    # that this filter would do nothing, so assume that this
+    # is really a configuration error.
+    assert items_matching, 'rank_features: missing or empty item match dict'
+    assert rank_key, 'rank_features: missing or empty rank key'
+
+    if zoom < start_zoom:
+        return None
+
+    layer = _find_layer(feature_layers, source_layer)
+    if layer is None:
+        return None
+
+    count = 0
+    for shape, props, fid in layer['features']:
+        if _match_props(props, items_matching):
+            count += 1
+            props[rank_key] = count
+
     return layer
