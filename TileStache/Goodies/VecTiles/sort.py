@@ -1,4 +1,4 @@
-from transform import to_float
+from util import to_float
 
 # sort functions to apply to features
 
@@ -47,6 +47,23 @@ def _sort_by_scalerank_then_population(features):
     return features
 
 
+def _by_subway_lines(feature):
+    wkb, props, fid = feature
+
+    num_lines = 0
+    subway_lines = props.get('subway_lines')
+    if subway_lines is not None:
+        num_lines = len(subway_lines)
+
+    return num_lines
+
+
+def _sort_by_subway_lines_then_feature_id(features):
+    features.sort(key=_by_feature_id)
+    features.sort(key=_by_subway_lines, reverse=True)
+    return features
+
+
 def buildings(features, zoom):
     return _sort_by_area_then_id(features)
 
@@ -64,7 +81,7 @@ def places(features, zoom):
 
 
 def pois(features, zoom):
-    return _sort_features_by_key(features, _by_feature_id)
+    return _sort_by_subway_lines_then_feature_id(features)
 
 
 def roads(features, zoom):
