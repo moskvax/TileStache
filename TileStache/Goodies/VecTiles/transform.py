@@ -2006,20 +2006,20 @@ def normalize_and_merge_duplicate_stations(
                 seen_props = new_features[seen_idx][1]
 
                 # make sure lines are unique
-                seen_subway_lines = set(seen_props['subway_lines'])
-                subway_lines = set(subway_lines)
-                subway_lines.update(seen_subway_lines)
-
-                seen_props['subway_lines'] = list(subway_lines)
+                unique_subway_lines = set(subway_lines) & \
+                    set(seen_props['subway_lines'])
+                seen_props['subway_lines'] = list(unique_subway_lines)
 
         else:
             # not a station, or name is missing - we can't
             # de-dup these.
             new_features.append(feature)
 
-    # need to re-sort: removing duplicates would have changed
-    # the number of lines for each station.
-    sort_pois(new_features, zoom)
+    # might need to re-sort, if we merged any stations:
+    # removing duplicates would have changed the number
+    # of lines for each station.
+    if seen_stations:
+        sort_pois(new_features, zoom)
 
     layer['features'] = new_features
     return layer
@@ -2067,8 +2067,9 @@ def keep_n_features(
         return None
 
     # we probably don't want to do this at higher zooms (e.g: 17 &
-    # 18), even if there are a bunch of stations very close
-    # together.
+    # 18), even if there are a bunch of features in the tile, as
+    # we use the high-zoom tiles for overzooming to 20+, and we'd
+    # eventually expect to see _everything_.
     if end_zoom is not None and zoom > end_zoom:
         return None
 
