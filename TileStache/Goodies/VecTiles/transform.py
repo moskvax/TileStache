@@ -6,6 +6,10 @@ from collections import defaultdict
 from shapely.strtree import STRtree
 from shapely.geometry.polygon import orient
 from shapely.ops import linemerge
+from shapely.geometry import Point
+from shapely.geometry import LineString
+from shapely.geometry import LinearRing
+from shapely.geometry import Polygon
 from shapely.geometry.multipoint import MultiPoint
 from shapely.geometry.multilinestring import MultiLineString
 from shapely.geometry.multipolygon import MultiPolygon
@@ -1181,12 +1185,86 @@ def _make_new_properties(props, props_instructions):
 
     return new_props
 
+
+def _snap_to_grid(shape, grid_size):
+    """
+    Snap coordinates of a shape to a multiple of `grid_size`.
+
+    This can be useful when there's some error in point
+    positions, but we're using an algorithm which is very
+    sensitive to coordinate exactness. For example, when
+    calculating the boundary of several items, it makes a
+    big difference whether the shapes touch or there's a
+    very small gap between them.
+
+    This is implemented here because it doesn't exist in
+    GEOS or Shapely. It exists in PostGIS, but only because
+    it's implemented there as well. Seems like it would be a
+    useful thing to have in GEOS, though.
+
+    >>> _snap_to_grid(Point(0.5, 0.5), 1).wkt
+    'POINT (1 1)'
+    >>> _snap_to_grid(Point(0.1, 0.1), 1).wkt
+    'POINT (0 0)'
+    >>> _snap_to_grid(Point(-0.1, -0.1), 1).wkt
+    'POINT (-0 -0)'
+    >>> _snap_to_grid(LineString([(1.1,1.1),(1.9,0.9)]), 1).wkt
+    'LINESTRING (1 1, 2 1)'
+    _snap_to_grid(Polygon([(0.1,0.1),(3.1,0.1),(3.1,3.1),(0.1,3.1),(0.1,0.1)],[[(1.1,0.9),(1.1,1.9),(2.1,1.9),(2.1,0.9),(1.1,0.9)]]), 1).wkt
+    'POLYGON ((0 0, 3 0, 3 3, 0 3, 0 0), (1 1, 1 2, 2 2, 2 1, 1 1))'
+    >>> _snap_to_grid(MultiPoint([Point(0.1, 0.1), Point(0.9, 0.9)]), 1).wkt
+    'MULTIPOINT (0 0, 1 1)'
+    >>> _snap_to_grid(MultiLineString([LineString([(0.1, 0.1), (0.9, 0.9)]), LineString([(0.9, 0.1),(0.1,0.9)])]), 1).wkt
+    'MULTILINESTRING ((0 0, 1 1), (1 0, 0 1))'
+    """
+
+    # snap a single coordinate value
+    def _snap(c):
+        return grid_size * round(c / grid_size, 0)
+
+    # snap all coordinate pairs in something iterable
+    def _snap_coords(c):
+        return [(_snap(x), _snap(y)) for x, y in c]
+
+    # recursively snap all coordinates in an iterable over
+    # geometries.
+    def _snap_multi(geoms):
+        return [_snap_to_grid(g, grid_size) for g in geoms]
+
+    shape_type = shape.geom_type
+    if shape_type == 'Point':
+        return Point(_snap(shape.x), _snap(shape.y))
+
+    elif shape_type == 'LineString':
+        return LineString(_snap_coords(shape.coords))
+
+    elif shape_type == 'Polygon':
+        exterior = LinearRing(_snap_coords(shape.exterior.coords))
+        interiors = []
+        for interior in shape.interiors:
+            interiors.append(LinearRing(_snap_coords(interior.coords)))
+        return Polygon(exterior, interiors)
+
+    elif shape_type == 'MultiPoint':
+        return MultiPoint(_snap_multi(shape.geoms))
+
+    elif shape_type == 'MultiLineString':
+        return MultiLineString(_snap_multi(shape.geoms))
+
+    elif shape_type == 'MultiPolygon':
+        return MultiPolygon(_snap_multi(shape.geoms))
+
+    else:
+        raise ValueError("_snap_to_grid: unimplemented for shape type %s" % repr(shape_type))
+
+
 def exterior_boundaries(feature_layers, zoom,
                         base_layer,
                         new_layer_name=None,
                         prop_transform=None,
                         buffer_size=None,
-                        start_zoom=0):
+                        start_zoom=0,
+                        snap_tolerance=None):
     """
     create new fetures from the boundaries of polygons
     in the base layer, subtracting any sections of the
@@ -1221,13 +1299,7 @@ def exterior_boundaries(feature_layers, zoom,
     # search through all the layers and extract the one
     # which has the name of the base layer we were given
     # as a parameter.
-    for feature_layer in feature_layers:
-        layer_datum = feature_layer['layer_datum']
-        layer_name = layer_datum['name']
-
-        if layer_name == base_layer:
-            layer = feature_layer
-            break
+    layer = _find_layer(feature_layers, base_layer)
 
     # if we failed to find the base layer then it's
     # possible the user just didn't ask for it, so return
@@ -1240,42 +1312,86 @@ def exterior_boundaries(feature_layers, zoom,
 
     features = layer['features']
 
+    # this exists to enable a dirty hack to try and work
+    # around duplicate geometries in the database. this
+    # happens when a multipolygon relation can't
+    # supersede a member way because the way contains tags
+    # which aren't present on the relation. working around
+    # this by calling "union" on geometries proved to be
+    # too expensive (~3x current), so this hack looks at
+    # the way_area of each object, and uses that as a
+    # proxy for identity. it's not perfect, but the chance
+    # that there are two overlapping polygons of exactly
+    # the same size must be pretty small. however, the
+    # STRTree we're using as a spatial index doesn't
+    # directly support setting attributes on the indexed
+    # geometries, so this class exists to carry the area
+    # attribute through the index to the point where we
+    # want to use it.
+    class geom_with_area:
+        def __init__(self, geom, area):
+            self.geom = geom
+            self.area = area
+            self._geom = geom._geom
+
     # create an index so that we can efficiently find the
     # polygons intersecting the 'current' one. Note that
     # we're only interested in intersecting with other
     # polygonal features, and that intersecting with lines
     # can give some unexpected results.
     indexable_features = list()
+    indexable_shapes = list()
     for shape, props, fid in features:
         if shape.geom_type in ('Polygon', 'MultiPolygon'):
-            indexable_features.append(shape)
-    index = STRtree(indexable_features)
+            snapped = shape
+            if snap_tolerance is not None:
+                snapped = _snap_to_grid(shape, snap_tolerance)
+            indexable_features.append((snapped, props, fid))
+            indexable_shapes.append(geom_with_area(snapped, props.get('area')))
+    index = STRtree(indexable_shapes)
 
     new_features = list()
     # loop through all the polygons, taking the boundary
     # of each and subtracting any parts which are within
     # other polygons. what remains (if anything) is the
     # new feature.
-    for feature in features:
+    for feature in indexable_features:
         shape, props, fid = feature
 
-        if shape.geom_type in ('Polygon', 'MultiPolygon'):
-            boundary = shape.boundary
-            cutting_shapes = index.query(boundary)
+        boundary = shape.boundary
+        cutting_shapes = index.query(boundary)
 
-            for cutting_shape in cutting_shapes:
-                if cutting_shape is not shape:
-                    buf = cutting_shape
+        for cutting_item in cutting_shapes:
+            cutting_shape = cutting_item.geom
+            cutting_area = cutting_item.area
 
-                    if buffer_size is not None:
-                        buf = buf.buffer(buffer_size)
+            # dirty hack: this object is probably a
+            # superseded way if the ID is positive and
+            # the area is the same as the cutting area.
+            # using the ID check here prevents the
+            # boundary from being duplicated.
+            is_superseded_way = \
+                cutting_area == props.get('area') and \
+                props.get('id') > 0
 
-                    boundary = boundary.difference(buf)
+            if cutting_shape is not shape and \
+               not is_superseded_way:
+                buf = cutting_shape
 
-            if not boundary.is_empty:
-                new_props = _make_new_properties(props,
-                    prop_transform)
-                new_features.append((boundary, new_props, fid))
+                if buffer_size is not None:
+                    buf = buf.buffer(buffer_size)
+
+                boundary = boundary.difference(buf)
+
+        # filter only linestring-like objects. we don't
+        # want any points which might have been created
+        # by the intersection.
+        boundary = _filter_geom_types(boundary, _LINE_DIMENSION)
+
+        if not boundary.is_empty:
+            new_props = _make_new_properties(props,
+                prop_transform)
+            new_features.append((boundary, new_props, fid))
 
     if new_layer_name is None:
         # no new layer requested, instead add new
