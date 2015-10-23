@@ -1365,8 +1365,17 @@ def exterior_boundaries(feature_layers, zoom,
             cutting_shape = cutting_item.geom
             cutting_area = cutting_item.area
 
+            # dirty hack: this object is probably a
+            # superseded way if the ID is positive and
+            # the area is the same as the cutting area.
+            # using the ID check here prevents the
+            # boundary from being duplicated.
+            is_superseded_way = \
+                cutting_area == props.get('area') and \
+                props.get('id') > 0
+
             if cutting_shape is not shape and \
-               cutting_area != props.get('area'):
+               not is_superseded_way:
                 buf = cutting_shape
 
                 if buffer_size is not None:
