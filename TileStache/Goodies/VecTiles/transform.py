@@ -1312,6 +1312,28 @@ def exterior_boundaries(feature_layers, zoom,
 
     features = layer['features']
 
+    # this exists to enable a dirty hack to try and work
+    # around duplicate geometries in the database. this
+    # happens when a multipolygon relation can't
+    # supersede a member way because the way contains tags
+    # which aren't present on the relation. working around
+    # this by calling "union" on geometries proved to be
+    # too expensive (~3x current), so this hack looks at
+    # the way_area of each object, and uses that as a
+    # proxy for identity. it's not perfect, but the chance
+    # that there are two overlapping polygons of exactly
+    # the same size must be pretty small. however, the
+    # STRTree we're using as a spatial index doesn't
+    # directly support setting attributes on the indexed
+    # geometries, so this class exists to carry the area
+    # attribute through the index to the point where we
+    # want to use it.
+    class geom_with_area:
+        def __init__(self, geom, area):
+            self.geom = geom
+            self.area = area
+            self._geom = geom._geom
+
     # create an index so that we can efficiently find the
     # polygons intersecting the 'current' one. Note that
     # we're only interested in intersecting with other
@@ -1325,7 +1347,7 @@ def exterior_boundaries(feature_layers, zoom,
             if snap_tolerance is not None:
                 snapped = _snap_to_grid(shape, snap_tolerance)
             indexable_features.append((snapped, props, fid))
-            indexable_shapes.append(snapped)
+            indexable_shapes.append(geom_with_area(snapped, props.get('area')))
     index = STRtree(indexable_shapes)
 
     new_features = list()
@@ -1339,14 +1361,23 @@ def exterior_boundaries(feature_layers, zoom,
         boundary = shape.boundary
         cutting_shapes = index.query(boundary)
 
-        for cutting_shape in cutting_shapes:
-            if cutting_shape is not shape:
+        for cutting_item in cutting_shapes:
+            cutting_shape = cutting_item.geom
+            cutting_area = cutting_item.area
+
+            if cutting_shape is not shape and \
+               cutting_area != props.get('area'):
                 buf = cutting_shape
 
                 if buffer_size is not None:
                     buf = buf.buffer(buffer_size)
 
                 boundary = boundary.difference(buf)
+
+        # filter only linestring-like objects. we don't
+        # want any points which might have been created
+        # by the intersection.
+        boundary = _filter_geom_types(boundary, _LINE_DIMENSION)
 
         if not boundary.is_empty:
             new_props = _make_new_properties(props,
