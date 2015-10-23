@@ -1255,7 +1255,7 @@ def _snap_to_grid(shape, grid_size):
         return MultiPolygon(_snap_multi(shape.geoms))
 
     else:
-        raise Exception("_snap_to_grid unimplemented for shape type %s" % repr(shape_type))
+        raise ValueError("_snap_to_grid: unimplemented for shape type %s" % repr(shape_type))
 
 
 def exterior_boundaries(feature_layers, zoom,
