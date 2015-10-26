@@ -179,11 +179,8 @@ def building_height(shape, properties, fid, zoom):
     height = _building_calc_height(
         properties.get('height'), properties.get('building:levels'),
         _building_calc_levels)
-    area = properties.get('area')
     if height is not None:
         properties['height'] = height
-        if area is not None:
-            properties['volume'] = height * area
     else:
         properties.pop('height', None)
     return shape, properties, fid
@@ -198,6 +195,14 @@ def building_min_height(shape, properties, fid, zoom):
     else:
         properties.pop('min_height', None)
     return shape, properties, fid
+
+
+def synthesize_volume(shape, props, fid, zoom):
+    area = props.get('area')
+    height = props.get('height')
+    if area is not None and height is not None:
+        props['volume'] = area * height
+    return shape, props, fid
 
 
 def building_trim_properties(shape, properties, fid, zoom):
