@@ -1363,8 +1363,24 @@ def exterior_boundaries(feature_layers, zoom,
             snapped = shape
             if snap_tolerance is not None:
                 snapped = _snap_to_grid(shape, snap_tolerance)
+
+                # snapping coordinates might make the shape
+                # invalid, so we need a way to clean them.
+                # one simple, but not foolproof, way is to
+                # buffer them by 0.
+                if not snapped.is_valid:
+                    snapped = snapped.buffer(0)
+
+                # that still might not have done the trick,
+                # so drop any polygons which are still
+                # invalid so as not to cause errors later.
+                if not snapped.is_valid:
+                    # TODO: log this as a warning!
+                    continue
+
             indexable_features.append((snapped, props, fid))
             indexable_shapes.append(geom_with_area(snapped, props.get('area')))
+
     index = STRtree(indexable_shapes)
 
     new_features = list()
