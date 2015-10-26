@@ -243,10 +243,13 @@ def road_sort_key(shape, properties, fid, zoom):
     highway = properties.get('highway', '')
     railway = properties.get('railway', '')
     aeroway = properties.get('aeroway', '')
+    service = properties.get('service')
+
+    is_railway = railway in ('rail', 'tram', 'light_rail', 'narrow_guage', 'monorail')
 
     if highway == 'motorway':
         sort_val += 24
-    elif railway in ('rail', 'tram', 'light_rail', 'narrow_guage', 'monorail'):
+    elif is_railway:
         sort_val += 23
     elif highway == 'trunk':
         sort_val += 22
@@ -264,6 +267,20 @@ def road_sort_key(shape, properties, fid, zoom):
         sort_val += 16
     else:
         sort_val += 15
+
+    if is_railway and service is not None:
+        if service in ('spur', 'siding'):
+            # make sort val more like residential, unclassified which
+            # also come in at zoom 12
+            sort_val -= 6
+        elif service == 'yard':
+            sort_val -= 7
+        else:
+            sort_val -= 8
+
+    if highway == 'service' and service is not None:
+        # sort alley, driveway, etc... under service
+        sort_val -= 1
 
     if zoom >= 15:
         # Bridges and tunnels add +/- 10
