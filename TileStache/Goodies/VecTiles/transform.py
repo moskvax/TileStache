@@ -179,8 +179,11 @@ def building_height(shape, properties, fid, zoom):
     height = _building_calc_height(
         properties.get('height'), properties.get('building:levels'),
         _building_calc_levels)
+    area = properties.get('area')
     if height is not None:
         properties['height'] = height
+        if area is not None:
+            properties['volume'] = height * area
     else:
         properties.pop('height', None)
     return shape, properties, fid
