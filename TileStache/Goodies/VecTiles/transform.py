@@ -122,6 +122,10 @@ road_kind_path = set(('footpath', 'track', 'footway', 'steps', 'pedestrian',
                       'path', 'cycleway'))
 road_kind_rail = set(('rail', 'tram', 'light_rail', 'narrow_gauge',
                       'monorail', 'subway'))
+road_kind_aerialway = set(('gondola', 'cable_car', 'chair_lift', 'drag_lift',
+                           'platter', 't-bar', 'goods', 'magic_carpet',
+                           'rope_tow', 'yes', 'zip_line', 'j-bar', 'unknown',
+                           'mixed_lift', 'canopy', 'cableway'))
 
 
 def _road_kind(properties):
@@ -138,6 +142,9 @@ def _road_kind(properties):
     route = properties.get('route')
     if route == 'ferry':
         return 'ferry'
+    aerialway = properties.get('aerialway')
+    if aerialway in road_kind_aerialway:
+        return 'aerialway'
     return 'minor_road'
 
 
@@ -251,6 +258,7 @@ def road_sort_key(shape, properties, fid, zoom):
     highway = properties.get('highway', '')
     railway = properties.get('railway', '')
     aeroway = properties.get('aeroway', '')
+    aerialway = properties.get('aerialway', '')
     service = properties.get('service')
 
     is_railway = railway in ('rail', 'tram', 'light_rail', 'narrow_guage', 'monorail')
@@ -272,6 +280,12 @@ def road_sort_key(shape, properties, fid, zoom):
     elif highway in ('residential', 'unclassified', 'road', 'living_street'):
         sort_val += 17
     elif highway in ('unclassified', 'service', 'minor'):
+        sort_val += 16
+    elif aerialway in ('gondola', 'cable_car'):
+        sort_val += 19
+    elif aerialway in ('chair_lift'):
+        sort_val += 18
+    elif aerialway is not None:
         sort_val += 16
     else:
         sort_val += 15
@@ -2283,6 +2297,23 @@ def rank_features(
             props[rank_key] = count
 
     return layer
+
+
+def normalize_aerialways(shape, props, fid, zoom):
+    aerialway = props.get('aerialway')
+
+    # normalise cableway, apparently a deprecated
+    # value.
+    if aerialway == 'cableway':
+        props['aerialway'] = 'zip_line'
+
+    # 'yes' is a pretty unhelpful value, so normalise
+    # to a slightly more meaningful 'unknown', which
+    # is also a commonly-used value.
+    if aerialway == 'yes':
+        props['aerialway'] = 'unknown'
+
+    return shape, props, fid
 
 
 def numeric_min_filter(
