@@ -204,6 +204,14 @@ def building_min_height(shape, properties, fid, zoom):
     return shape, properties, fid
 
 
+def synthesize_volume(shape, props, fid, zoom):
+    area = props.get('area')
+    height = props.get('height')
+    if area is not None and height is not None:
+        props['volume'] = area * height
+    return shape, props, fid
+
+
 def building_trim_properties(shape, properties, fid, zoom):
     properties = _remove_properties(
         properties,
@@ -2306,3 +2314,59 @@ def normalize_aerialways(shape, props, fid, zoom):
         props['aerialway'] = 'unknown'
 
     return shape, props, fid
+
+
+def numeric_min_filter(
+        feature_layers, zoom, source_layer=None, filters=None,
+        mode=None):
+    """
+    Keep only features which have properties equal or greater
+    than the configured minima. These are in a dict per zoom
+    like this:
+
+    { 15: { 'area': 1000 }, 16: { 'area': 2000 } }
+
+    This would mean that at zooms 15 and 16, the filter was
+    active. At other zooms it would do nothing.
+
+    Multiple filters can be given for a single zoom. The
+    `mode` parameter can be set to 'any' to require that only
+    one of the filters needs to match, or any other value to
+    use the default 'all', which requires all filters to
+    match.
+    """
+
+    assert source_layer, 'rank_features: missing source layer'
+
+    # assume missing filter is a config error.
+    assert filters, 'numeric_min_filter: missing or empty filters dict'
+
+    # get the minimum filters for this zoom, and return if
+    # there are none to apply.
+    minima = filters.get(zoom)
+    if not minima:
+        return None
+
+    layer = _find_layer(feature_layers, source_layer)
+    if layer is None:
+        return None
+
+    # choose whether all minima have to be met, or just
+    # one of them.
+    aggregate_func = all
+    if mode == 'any':
+        aggregate_func = any
+
+    new_features = []
+    for shape, props, fid in layer['features']:
+        keep = []
+
+        for prop, min_val in minima.iteritems():
+            val = props.get(prop)
+            keep.append(val >= min_val)
+
+        if aggregate_func(keep):
+            new_features.append((shape, props, fid))
+
+    layer['features'] = new_features
+    return layer
