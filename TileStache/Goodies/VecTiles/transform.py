@@ -2106,14 +2106,16 @@ def normalize_and_merge_duplicate_stations(
     """
     Normalise station names by removing any parenthetical lines
     lists at the end (e.g: "Foo St (A, C, E)"). Parse this and
-    use it to replace the `subway_lines` list if that is empty
+    use it to replace the `transit_routes` list if that is empty
     or isn't present.
 
     Use the name, now appropriately trimmed, to merge station
-    POIs together, unioning their subway lines.
+    POIs together, unioning their transit routes.
+
+    Stations with empty transit_routes have that property removed.
 
     Finally, re-sort the features in case the merging has caused
-    the subway stations to be out-of-order.
+    the station POIs to be out-of-order.
     """
 
     assert source_layer, 'normalize_and_merge_duplicate_stations: missing source layer'
@@ -2146,14 +2148,14 @@ def normalize_and_merge_duplicate_stations(
             # list of lines if we haven't already got that info.
             m = station_pattern.match(name)
 
-            subway_lines = props.get('subway_lines', [])
+            transit_routes = props.get('transit_routes', [])
 
             if m:
                 # if the lines aren't present or are empty
-                if not subway_lines:
+                if not transit_routes:
                     lines = m.group(2).split(',')
-                    subway_lines = [x.strip() for x in lines]
-                    props['subway_lines'] = subway_lines
+                    transit_routes = [x.strip() for x in lines]
+                    props['transit_routes'] = transit_routes
 
                 # update name so that it doesn't contain all the
                 # lines.
@@ -2164,31 +2166,41 @@ def normalize_and_merge_duplicate_stations(
             if seen_idx is None:
                 seen_stations[name] = len(new_features)
 
-                # ensure that subway lines is present and is of
+                # ensure that transit routes is present and is of
                 # list type for when we append to it later if we
                 # find a duplicate.
-                props['subway_lines'] = subway_lines
+                props['transit_routes'] = transit_routes
                 new_features.append(feature)
 
             else:
                 # get the properties and append this duplicate's
-                # subway lines to the list on the original
+                # transit routes to the list on the original
                 # feature.
                 seen_props = new_features[seen_idx][1]
 
-                # make sure lines are unique
-                unique_subway_lines = set(subway_lines) & \
-                    set(seen_props['subway_lines'])
-                seen_props['subway_lines'] = list(unique_subway_lines)
+                # make sure routes are unique
+                unique_transit_routes = set(transit_routes) & \
+                    set(seen_props['transit_routes'])
+                seen_props['transit_routes'] = list(unique_transit_routes)
 
         else:
             # not a station, or name is missing - we can't
             # de-dup these.
             new_features.append(feature)
 
+    # remove anything that has an empty transit_routes
+    # list, as this most likely indicates that we were
+    # not able to _detect_ what lines it's part of, as
+    # it seems unlikely that a station would be part of
+    # _zero_ routes.
+    for shape, props, fid in new_features:
+        transit_routes = props.pop('transit_routes', [])
+        if transit_routes:
+            props['transit_routes'] = transit_routes
+
     # might need to re-sort, if we merged any stations:
     # removing duplicates would have changed the number
-    # of lines for each station.
+    # of routes for each station.
     if seen_stations:
         sort_pois(new_features, zoom)
 
