@@ -2112,6 +2112,8 @@ def normalize_and_merge_duplicate_stations(
     Use the name, now appropriately trimmed, to merge station
     POIs together, unioning their subway lines.
 
+    Stations with empty subway_lines have that property removed.
+
     Finally, re-sort the features in case the merging has caused
     the subway stations to be out-of-order.
     """
@@ -2185,6 +2187,16 @@ def normalize_and_merge_duplicate_stations(
             # not a station, or name is missing - we can't
             # de-dup these.
             new_features.append(feature)
+
+    # remove anything that has an empty subway_lines
+    # list, as this most likely indicates that we were
+    # not able to _detect_ what lines it's part of, as
+    # it seems unlikely that a station would be part of
+    # _zero_ lines.
+    for shape, props, fid in new_features:
+        subway_lines = props.pop('subway_lines', [])
+        if subway_lines:
+            props['subway_lines'] = subway_lines
 
     # might need to re-sort, if we merged any stations:
     # removing duplicates would have changed the number
