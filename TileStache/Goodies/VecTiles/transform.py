@@ -2466,3 +2466,46 @@ def numeric_min_filter(
 
     layer['features'] = new_features
     return layer
+
+
+def copy_features(
+        feature_layers, zoom, source_layer=None, target_layer=None,
+        where=None, geometry_types=None):
+    """
+    Copy features matching _both_ the `where` selection and the
+    `geometry_types` list to another layer. If the target layer
+    doesn't exist, it is created.
+    """
+
+    assert source_layer, 'copy_features: source layer not configured'
+    assert target_layer, 'copy_features: target layer not configured'
+    assert where, 'copy_features: you must specify how to match features in the where parameter'
+    assert geometry_types, 'copy_features: you must specify at least one type of geometry in geometry_types'
+
+    src_layer = _find_layer(feature_layers, source_layer)
+    if src_layer is None:
+        return None
+
+    tgt_layer = _find_layer(feature_layers, target_layer)
+    if tgt_layer is None:
+        # create target layer if it doesn't already exist.
+        tgt_layer_datum = src_layer['layer_datum'].copy()
+        tgt_layer_datum['name'] = target_layer
+        tgt_layer = dict(
+            name=target_layer,
+            features=[],
+            layer_datum=tgt_layer_datum,
+        )
+
+    new_features = []
+    for feature in src_layer['features']:
+        shape, props, fid = feature
+
+        if _match_props(props, where):
+            # need to deep copy, otherwise we could have some
+            # unintended side effects if either layer is
+            # mutated later on.
+            new_features.append((shape.copy(), props.copy(), fid))
+
+    tgt_layer['features'].extend(new_features)
+    return tgt_layer
