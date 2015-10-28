@@ -1788,13 +1788,16 @@ def admin_boundaries(feature_layers, zoom, base_layer,
 
 def generate_label_features(
         feature_layers, zoom, source_layer=None, label_property_name=None,
-        label_property_value=None, new_layer_name=None):
+        label_property_value=None, new_layer_name=None, drop_keys=None):
 
     assert source_layer, 'generate_label_features: missing source_layer'
 
     layer = _find_layer(feature_layers, source_layer)
     if layer is None:
         return None
+
+    if drop_keys is None:
+        drop_keys = []
 
     new_features = []
     for feature in layer['features']:
@@ -1820,6 +1823,13 @@ def generate_label_features(
         label_point = shape.representative_point()
 
         label_properties = properties.copy()
+
+        # drop particular keys which might not be relevant any more.
+        # for example, mz_is_building, which is used by a later
+        # polygon processing stage, but irrelevant to label processing.
+        for k in drop_keys:
+            label_properties.pop(k, None)
+
         if label_property_name:
             label_properties[label_property_name] = label_property_value
 
