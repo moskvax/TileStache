@@ -2032,20 +2032,85 @@ def remove_zero_area(shape, properties, fid, zoom):
 _MERCATOR_CIRCUMFERENCE = 40075016.68
 
 
+# _Deduplicator handles the logic for deduplication. a feature
+# is considered a duplicate if it has the same property tuple
+# as another and is within a certain distance of the other.
+#
+# the property tuple is calculated by taking a tuple or list
+# of keys and extracting the value of the matching property
+# or None. if none_means_unique is true, then if any tuple
+# entry is None the feature is considered unique and kept.
+#
+# note: distance here is measured in coordinate units; i.e:
+# mercator meters!
+class _Deduplicator:
+    def __init__(self, property_keys, min_distance,
+                 none_means_unique):
+        self.property_keys = property_keys
+        self.min_distance = min_distance
+        self.none_means_unique = none_means_unique
+        self.seen_items = dict()
+
+    def keep_feature(self, feature):
+        """
+        Returns true if the feature isn't a duplicate, and should
+        be kept in the output. Otherwise, returns false, as
+        another feature had the same tuple of values.
+        """
+        shape, props, fid = feature
+
+        key = tuple([props.get(k) for k in self.property_keys])
+        if self.none_means_unique and any([v is None for v in key]):
+            return True
+
+        seen_geoms = self.seen_items.get(key)
+        if seen_geoms is None:
+            # first time we've seen this item, so keep it in
+            # the output.
+            self.seen_items[key] = [shape]
+            return True
+
+        else:
+            # if the distance is greater than the minimum set
+            # for this zoom, then we also keep it.
+            distance = min([shape.distance(s) for s in seen_geoms])
+
+            if distance > self.min_distance:
+                # this feature is far enough away to count as
+                # distinct, but keep this geom to suppress any
+                # other labels nearby.
+                seen_geoms.append(shape)
+                return True
+
+            else:
+                # feature is a duplicate
+                return False
+
+
 def remove_duplicate_features(
-        feature_layers, zoom, source_layer=None, start_zoom=0,
-        property_keys=None, geometry_types=None, min_distance=0.0):
+        feature_layers, zoom, source_layer=None, source_layers=None,
+        start_zoom=0, property_keys=None, geometry_types=None,
+        min_distance=0.0, none_means_unique=True):
     """
-    Removes duplicate features from the layer. The definition of
-    duplicate is anything which has the same values for the tuple
-    of values associated with the property_keys.
+    Removes duplicate features from a layer, or set of layers. The
+    definition of duplicate is anything which has the same values
+    for the tuple of values associated with the property_keys.
+
+    If `none_means_unique` is set, which it is by default, then a
+    value of None for *any* of the values in the tuple causes the
+    feature to be considered unique and completely by-passed. This
+    is mainly to handle things like features missing their name,
+    where we don't want to remove all but one unnamed feature.
 
     For example, if property_keys was ['name', 'kind'], then only
     the first feature of those with the same value for the name
     and kind properties would be kept in the output.
     """
 
-    assert source_layer, 'remove_duplicate_features: missing source layer'
+    # can use either a single source layer, or multiple source
+    # layers, but not both.
+    assert bool(source_layer) ^ bool(source_layers), \
+        'remove_duplicate_features: define either source layer or source layers, but not both'
 
     # note that the property keys or geometry types could be empty,
     # but then this post-process filter would do nothing. so we
@@ -2057,9 +2122,14 @@ def remove_duplicate_features(
     if zoom < start_zoom:
         return None
 
-    layer = _find_layer(feature_layers, source_layer)
-    if layer is None:
-        return None
+    # allow either a single or multiple layers to be used.
+    if source_layer:
+        source_layers = [source_layer]
+
+    # correct for zoom: min_distance is given in pixels, but we
+    # want to do the comparison in coordinate units to avoid
+    # repeated conversions.
+    min_distance = min_distance * _MERCATOR_CIRCUMFERENCE / float(1 << (zoom + 8))
 
     # keep a set of the tuple of the property keys. this will tell
     # us if the feature is unique while allowing us to maintain the
@@ -2067,47 +2137,51 @@ def remove_duplicate_features(
     # features. we keep the geometry of the seen items too, so that
     # we can tell if any new feature is significantly far enough
     # away that it should be shown again.
-    seen_items = dict()
+    deduplicator = _Deduplicator(property_keys, min_distance,
+                                 none_means_unique)
 
-    def meters_to_pixels(distance):
-        return distance * float(1 << (zoom + 8)) / 40075016.68
+    for source_layer in source_layers:
+        layer_index = -1
+        # because this post-processor can potentially modify
+        # multiple layers, and that wasn't how the return value
+        # system was designed, instead it modifies layers
+        # *in-place*. this is abnormal, and as such requires a
+        # nice big comment like this!
+        for index, feature_layer in enumerate(feature_layers):
+            layer_datum = feature_layer['layer_datum']
+            layer_name = layer_datum['name']
+            if layer_name == source_layer:
+                layer_index = index
+                break
 
-    new_features = []
-    for feature in layer['features']:
-        shape, props, fid = feature
+        if layer_index < 0:
+            # TODO: warn about missing layer when we get the
+            # ability to log.
+            continue
 
-        keep_feature = True
-        if shape.geom_type in geometry_types:
-            key = tuple([props.get(k) for k in property_keys])
-            seen_geoms = seen_items.get(key)
+        layer = feature_layers[layer_index]
 
-            if seen_geoms is None:
-                # first time we've seen this item, so keep it in
-                # the output.
-                seen_items[key] = [shape]
+        new_features = []
+        for feature in layer['features']:
+            shape, props, fid = feature
+            keep_feature = True
 
-            else:
-                # if the distance is greater than the minimum set
-                # for this zoom, then we also keep it.
-                distance = min([shape.distance(s) for s in seen_geoms])
+            if geometry_types is not None and \
+               shape.geom_type in geometry_types:
+                keep_feature = deduplicator.keep_feature(feature)
 
-                # correct for zoom - we want visual distance, which
-                # means (pseudo) pixels.
-                distance = meters_to_pixels(distance)
+            if keep_feature:
+                new_features.append(feature)
 
-                if distance > min_distance:
-                    # keep this geom to suppress any other labels
-                    # nearby.
-                    seen_geoms.append(shape)
+        # NOTE! modifying the layer *in-place*.
+        layer['features'] = new_features
+        feature_layers[index] = layer
 
-                else:
-                    keep_feature = False
-
-        if keep_feature:
-            new_features.append(feature)
-
-    layer['features'] = new_features
-    return layer
+    # returning None here would normally indicate that the
+    # post-processor has done nothing. but because this
+    # modifies the layers *in-place* then all the return
+    # value is superfluous.
+    return None
 
 
 def normalize_and_merge_duplicate_stations(
