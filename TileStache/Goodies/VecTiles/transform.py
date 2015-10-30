@@ -208,7 +208,7 @@ def synthesize_volume(shape, props, fid, zoom):
     area = props.get('area')
     height = props.get('height')
     if area is not None and height is not None:
-        props['volume'] = area * height
+        props['volume'] = int(area * height)
     return shape, props, fid
 
 
