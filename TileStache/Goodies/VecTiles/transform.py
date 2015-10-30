@@ -2509,3 +2509,17 @@ def copy_features(
 
     tgt_layer['features'].extend(new_features)
     return tgt_layer
+
+
+def make_representative_point(shape, properties, fid, zoom):
+    """
+    Replaces the geometry of each feature with its
+    representative point. This is a point which should be
+    within the interior of the geometry, which can be
+    important for labelling concave or doughnut-shaped
+    polygons.
+    """
+
+    shape = shape.representative_point()
+
+    return shape, properties, fid
