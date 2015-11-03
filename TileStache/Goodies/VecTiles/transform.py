@@ -30,6 +30,7 @@ digits_pattern = re.compile('^[0-9-]+$')
 # parenthetical list of line names.
 station_pattern = re.compile('([^(]*)\(([^)]*)\).*')
 
+
 def _to_float_meters(x):
     if x is None:
         return None
@@ -1142,7 +1143,6 @@ _default_scalerank_for_place_kind = {
     'farm': 13,
 
     'hamlet': 12,
-    'neighbourhood': 12,
 
     'village': 11,
 
