@@ -2297,10 +2297,16 @@ def _match_props(props, items_matching):
     Checks if all the items in `items_matching` are also
     present in `props`. If so, returns true. Otherwise
     returns false.
+    Each value in `items_matching` can be a list, in which case the
+    value from `props` must be any one of those values.
     """
 
     for k, v in items_matching.iteritems():
-        if props.get(k) != v:
+        prop_val = props.get(k)
+        if isinstance(v, list):
+            if prop_val not in v:
+                return False
+        elif prop_val != v:
             return False
 
     return True
