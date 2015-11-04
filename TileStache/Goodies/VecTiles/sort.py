@@ -85,7 +85,7 @@ def _place_key_desc(feature):
 def places(features, zoom):
     features.sort(key=_place_key_desc, reverse=True)
     features.sort(key=_by_scalerank)
-    features.sort(key=_by_feature_property('n_photos'), reverse=True)
+    features.sort(key=_by_feature_property('mz_n_photos'), reverse=True)
     return features
 
 
