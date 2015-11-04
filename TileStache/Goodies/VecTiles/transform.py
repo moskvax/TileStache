@@ -816,6 +816,39 @@ class _Cutter:
         inside, outside = \
             self.intersect_func(shape, cutting_shape)
 
+        # intersections are tricky, and it seems that the geos
+        # library (perhaps only certain versions of it) don't
+        # handle intersection of a polygon with its boundary
+        # very well. for example:
+        #
+        # >>> import shapely.geometry as g
+        # >>> p = g.Point(0,0).buffer(1.0, resolution=2)
+        # >>> b = p.boundary
+        # >>> b.intersection(p).wkt
+        # 'MULTILINESTRING ((1 0, 0.7071067811865481 -0.7071067811865469), (0.7071067811865481 -0.7071067811865469, 1.615544574432587e-15 -1), (1.615544574432587e-15 -1, -0.7071067811865459 -0.7071067811865491), (-0.7071067811865459 -0.7071067811865491, -1 -3.231089148865173e-15), (-1 -3.231089148865173e-15, -0.7071067811865505 0.7071067811865446), (-0.7071067811865505 0.7071067811865446, -4.624589118372729e-15 1), (-4.624589118372729e-15 1, 0.7071067811865436 0.7071067811865515), (0.7071067811865436 0.7071067811865515, 1 0))'
+        #
+        # the result multilinestring could be joined back into
+        # the original object. but because it has separate parts,
+        # each requires duplicating the start and end point, and
+        # each separate segment gets a different polygon buffer
+        # in Tangram - basically, it's a problem all round.
+        #
+        # two solutions to this: given that we're cutting, then
+        # the inside and outside should union back to the
+        # original shape - if either is empty then the whole
+        # object ought to be in the other.
+        #
+        # the second solution, for when there is actually some
+        # part cut, is that we can attempt to merge lines back
+        # together.
+        if outside.is_empty and not inside.is_empty:
+            inside = shape
+        elif inside.is_empty and not outside.is_empty:
+            outside = shape
+        elif original_geom_dim == _LINE_DIMENSION:
+            inside = _linemerge(inside)
+            outside = _linemerge(outside)
+
         if cutting_attr is not None:
             inside_props = props.copy()
             inside_props[self.target_attribute] = cutting_attr
