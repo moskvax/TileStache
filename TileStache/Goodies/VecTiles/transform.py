@@ -2031,6 +2031,32 @@ def drop_features_where(
     return layer
 
 
+def drop_properties(
+        feature_layers, zoom, source_layer=None, start_zoom=0,
+        properties=None):
+    """
+    Drop all configured properties for features in source_layer
+    """
+
+    assert source_layer, 'drop_properties: missing source layer'
+    assert properties, 'drop_properties: missing properties'
+
+    if zoom < start_zoom:
+        return None
+
+    layer = _find_layer(feature_layers, source_layer)
+    if layer is None:
+        return None
+
+    for feature in layer['features']:
+        shape, f_props, fid = feature
+
+        for prop_to_drop in properties:
+            f_props.pop(prop_to_drop, None)
+
+    return layer
+
+
 def remove_zero_area(shape, properties, fid, zoom):
     """
     All features get a numeric area tag, but for points this
