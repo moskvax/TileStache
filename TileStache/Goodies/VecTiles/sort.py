@@ -18,9 +18,16 @@ def _by_feature_property(property_name):
 _by_feature_id = _by_feature_property('id')
 
 
+def _by_area(feature):
+    wkb, properties, fid = feature
+    default_value = -1000
+    sort_key = properties.get('area', default_value)
+    return sort_key
+
+
 def _sort_by_area_then_id(features):
     features.sort(key=_by_feature_id)
-    features.sort(key=_by_feature_property('area'), reverse=True)
+    features.sort(key=_by_area, reverse=True)
     return features
 
 
@@ -39,12 +46,6 @@ def _by_population(feature):
         return int(population_flt)
     else:
         return default_value
-
-
-def _sort_by_scalerank_then_population(features):
-    features.sort(key=_by_population, reverse=True)
-    features.sort(key=_by_scalerank)
-    return features
 
 
 def _by_transit_routes(feature):
@@ -76,8 +77,16 @@ def landuse(features, zoom):
     return _sort_by_area_then_id(features)
 
 
+def _place_key_desc(feature):
+    sort_key = _by_population(feature), _by_area(feature)
+    return sort_key
+
+
 def places(features, zoom):
-    return _sort_by_scalerank_then_population(features)
+    features.sort(key=_place_key_desc, reverse=True)
+    features.sort(key=_by_scalerank)
+    features.sort(key=_by_feature_property('n_photos'), reverse=True)
+    return features
 
 
 def pois(features, zoom):
